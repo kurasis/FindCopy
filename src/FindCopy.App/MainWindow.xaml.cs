@@ -496,7 +496,7 @@ public partial class MainWindow : Window
         var expanded = new HashSet<int>(_groups.Where(g => g.IsExpanded).Select(g => g.Group.GroupId));
         _groups = newGroups.Select(g => MakeGroup(g, expanded.Contains(g.GroupId))).ToList();
         foreach (var f in _groups.SelectMany(g => g.Files).Where(f => stillChecked.Contains(f.Path))) f.SetChecked(true, notifyGroup: false);
-        foreach (var g in _groups) g.OnSelectionChanged();
+        foreach (var g in _groups) g.OnSelectionChanged(notifySelection: false);
         ResultTree.ItemsSource = _groups;
         DupTab.Header = $"Дубликаты ({Fmt.Num(_groups.Count)})";
         SelectionBar.Visibility = _groups.Count > 0 ? Visibility.Visible : Visibility.Collapsed;

@@ -287,6 +287,10 @@ internal static class Program
                 var watch = Stopwatch.StartNew(); Click(window, "SelectExtrasButton");
                 Require(Groups(window).All(g => g.SelectedCount == 2) && Control<Button>(window, "DeleteButton").IsEnabled,
                     "bulk selection lost keepers or omitted groups");
+                Invoke(window, "ApplyDeletion", new List<DeleteOutcome> { new(Groups(window)[0].Files.First(f => f.IsChecked).Path,
+                    false, "Fixture denial; original files retained", 0) });
+                Require(Groups(window).Count == groups && Groups(window).All(g => g.SelectedCount == 2),
+                    "large-list deletion refresh lost checked files or groups");
                 await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
                 Click(window, "ClearSelectionButton");
                 Require(Groups(window).All(g => g.SelectedCount == 0) && !Control<Button>(window, "DeleteButton").IsEnabled,
