@@ -12,6 +12,7 @@ internal static class PublishedAppAcceptance
         File.WriteAllText(Path.Combine(root, "keeper"), "Published desktop acceptance bytes");
         File.WriteAllText(Path.Combine(root, "extra"), "Published desktop acceptance bytes");
         using var process = Process.Start(new ProcessStartInfo(executable) { UseShellExecute = false })!;
+        int processId = process.Id;
         using var done = new CancellationTokenSource();
         var dialogs = new Thread(() =>
         {
@@ -20,10 +21,11 @@ internal static class PublishedAppAcceptance
                 EnumWindows((handle, _) =>
                 {
                     GetWindowThreadProcessId(handle, out uint pid);
-                    if (pid != process.Id) return true;
+                    if (pid != processId) return true;
                     var title = new StringBuilder(256); GetWindowTextW(handle, title, title.Capacity);
-                    if (title.ToString() == "Подтвердите удаление") SendMessageW(handle, 0x0111, new IntPtr(6), IntPtr.Zero);
-                    if (title.ToString() == "Удаление") SendMessageW(handle, 0x0111, new IntPtr(1), IntPtr.Zero);
+                    // Posting avoids blocking the responder while a second modal dialog opens.
+                    if (title.ToString() == "Подтвердите удаление") PostMessageW(handle, 0x0111, new IntPtr(6), IntPtr.Zero);
+                    if (title.ToString() == "Удаление") PostMessageW(handle, 0x0111, new IntPtr(1), IntPtr.Zero);
                     return true;
                 }, IntPtr.Zero);
                 Thread.Sleep(20);
@@ -83,5 +85,5 @@ internal static class PublishedAppAcceptance
     [DllImport("user32.dll")] private static extern bool EnumWindows(WindowCallback callback, IntPtr parameter);
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowTextW(IntPtr window, StringBuilder text, int length);
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr SendMessageW(IntPtr window, uint message, IntPtr wparam, IntPtr lparam);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern bool PostMessageW(IntPtr window, uint message, IntPtr wparam, IntPtr lparam);
 }
