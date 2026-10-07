@@ -387,7 +387,7 @@ internal static class Program
                             if (edit != null && save != null && save.Current.IsEnabled)
                             {
                                 edit.SetFocus();
-                                TypeNativeFilename(output);
+                                TypeNativeFilename(dialog, edit, output);
                                 var value = (ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern);
                                 var typing = Stopwatch.StartNew();
                                 while (value.Current.Value != output && typing.Elapsed < TimeSpan.FromSeconds(3)) Thread.Sleep(20);
@@ -420,21 +420,24 @@ internal static class Program
         Require(submitted && File.Exists(output), $"Native CSV save failed: submitted={submitted}; exists={File.Exists(output)}; {diagnostic}");
     }
 
-    private static void TypeNativeFilename(string filename)
+    private static void TypeNativeFilename(IntPtr dialog, AutomationElement edit, string filename)
     {
-        Require(IntPtr.Size == 8, "native keyboard fixture requires 64-bit INPUT layout");
-        static KeyboardEvent Key(ushort vk, ushort scan, uint flags) => new()
-        { Type = 1, Keyboard = new KeyboardData { VirtualKey = vk, ScanCode = scan, Flags = flags } };
-        var keys = new List<KeyboardEvent> { Key(0x11, 0, 0), Key(0x41, 0, 0), Key(0x41, 0, 2), Key(0x11, 0, 2) };
-        foreach (char character in filename)
+        IntPtr input = new(edit.Current.NativeWindowHandle);
+        if (input == IntPtr.Zero)
         {
-            keys.Add(Key(0, character, 4 /* KEYEVENTF_UNICODE */));
-            keys.Add(Key(0, character, 6 /* KEYEVENTF_UNICODE | KEYEVENTF_KEYUP */));
+            IntPtr combo = GetDlgItem(dialog, 1148);
+            if (combo != IntPtr.Zero) input = GetDlgItem(combo, 1001);
         }
-        var events = keys.ToArray();
-        if (SendInput((uint)events.Length, events, Marshal.SizeOf<KeyboardEvent>()) != events.Length)
-            throw new Exception("Native keyboard input failed: " + Marshal.GetLastWin32Error());
+        Require(input != IntPtr.Zero, "native filename edit has no HWND");
+        GetWindowThreadProcessId(input, out uint process);
+        Require(process == Environment.ProcessId, "native input belongs to another process");
+        // Direct character messages work in the runner's unattended desktop;
+        // UI Automation SetValue does not update IFileDialog's chosen name.
+        SendMessageW(input, 0x00B1 /* EM_SETSEL */, IntPtr.Zero, new IntPtr(-1));
+        foreach (char character in filename)
+            SendMessageW(input, 0x0102 /* WM_CHAR */, new IntPtr(character), new IntPtr(1));
     }
+
     private static async Task Wait(Func<bool> ready)
     {
         var watch = Stopwatch.StartNew();
@@ -470,12 +473,5 @@ internal static class Program
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowTextW(IntPtr window, StringBuilder text, int length);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr SendMessageW(IntPtr window, uint message, IntPtr value, IntPtr parameter);
     [DllImport("user32.dll")] private static extern bool PostMessageW(IntPtr window, uint message, IntPtr value, IntPtr parameter);
-    [StructLayout(LayoutKind.Sequential)]
-    private struct KeyboardData
-    { public ushort VirtualKey, ScanCode; public uint Flags, Time; public IntPtr ExtraInfo; }
-    [StructLayout(LayoutKind.Explicit, Size = 40)]
-    private struct KeyboardEvent
-    { [FieldOffset(0)] public uint Type; [FieldOffset(8)] public KeyboardData Keyboard; }
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern uint SendInput(uint count, [In] KeyboardEvent[] events, int size);
+    [DllImport("user32.dll")] private static extern IntPtr GetDlgItem(IntPtr window, int control);
 }
