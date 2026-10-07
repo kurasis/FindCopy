@@ -377,6 +377,21 @@ internal static class Program
                         try
                         {
                             var element = AutomationElement.FromHandle(dialog);
+                            // A fresh standard-user profile can show an informational
+                            // shell warning about its initial folder before accepting input.
+                            var warning = element.FindFirst(TreeScope.Descendants, new AndCondition(
+                                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
+                                new PropertyCondition(AutomationElement.AutomationIdProperty, "CommandButton_1"), new OrCondition(
+                                new PropertyCondition(AutomationElement.NameProperty, "OK"),
+                                new PropertyCondition(AutomationElement.NameProperty, "ОК"))));
+                            if (warning != null && warning.Current.IsEnabled)
+                            {
+                                var texts = element.FindAll(TreeScope.Descendants,
+                                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text));
+                                Console.WriteLine("CSV_PICKER_WARNING: " + string.Join("; ", texts.Cast<AutomationElement>().Select(c => c.Current.Name)));
+                                ((InvokePattern)warning.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
+                                Thread.Sleep(20); continue;
+                            }
                             var edit = element.FindFirst(TreeScope.Descendants, new AndCondition(
                                 new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit),
                                 new PropertyCondition(AutomationElement.AutomationIdProperty, "1001")));
