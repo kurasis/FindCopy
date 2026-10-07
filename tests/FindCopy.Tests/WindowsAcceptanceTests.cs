@@ -140,6 +140,13 @@ static class WindowsAcceptanceTests
                 ExactVerification = true, CachePath = cache }, default).GetAwaiter().GetResult();
             Require(first.Groups.Count == 1 && !first.HasUncheckedFiles, "hydrated cache fill: " + string.Join("; ", first.Issues));
             int fetches = cloud.Fetches;
+            // USN is captured before content reads. The first subsequent scan
+            // must reconcile the hydration writes rather than skip those events.
+            var reconciled = new ScanController().RunAsync(new ScanOptions { Roots = new[] { d }, CachePath = cache }, default).GetAwaiter().GetResult();
+            Console.WriteLine($"CLOUD_CACHE_RECONCILE: groups={reconciled.Groups.Count}; content={reconciled.Counters.ContentBytesRead}; hits={reconciled.Counters.CacheHits}; USN invalidated={reconciled.Counters.UsnInvalidated}; fetches={cloud.Fetches}");
+            Require(reconciled.Groups.Count == 1 && !reconciled.HasUncheckedFiles && cloud.Fetches == fetches &&
+                (reconciled.Counters.ContentBytesRead == 0 || reconciled.Counters.UsnInvalidated >= 2),
+                "default policy or post-hydration USN reconciliation failed: " + string.Join("; ", reconciled.Issues));
             var warm = new ScanController().RunAsync(new ScanOptions { Roots = new[] { d }, CachePath = cache }, default).GetAwaiter().GetResult();
             Require(warm.Groups.Count == 1 && !warm.HasUncheckedFiles && warm.Counters.ContentBytesRead == 0 &&
                 warm.Counters.CacheHits == 2 && cloud.Fetches == fetches, "warm cloud scan skipped local data, reread content, or fetched again: " + string.Join("; ", warm.Issues));
