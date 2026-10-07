@@ -64,10 +64,32 @@ static class WindowsAcceptanceTests
         {
             string d = Path.Combine(root, "cloud-api"); Directory.CreateDirectory(d);
             using var cloud = new CloudFixture(d);
+            cloud.Connect();
             var r = Scan(d);
             Require(r.Counters.ContentBytesRead == 0 && r.Counters.SkippedFiles == 2 &&
                 r.IssueCounts.GetValueOrDefault(FileStatus.CloudContentNotLocal) == 2 && r.HasUncheckedFiles,
                 "real non-local placeholders were not excluded");
+            Require(cloud.Fetches == 0, "default scan requested provider hydration");
+        });
+        test("W19 explicit online inclusion fetches actual Cloud Files content", () =>
+        {
+            string d = Path.Combine(root, "cloud-download"); Directory.CreateDirectory(d);
+            using var cloud = new CloudFixture(d); cloud.Connect();
+            var r = new ScanController().RunAsync(new ScanOptions { Roots = new[] { d }, IncludeOnlineOnlyFiles = true,
+                ExactVerification = true }, default).GetAwaiter().GetResult();
+            Require(cloud.Fetches >= 2 && cloud.CallbackErrors.Count == 0 && !r.HasUncheckedFiles &&
+                r.Groups.Count == 1 && r.Groups[0].Verification == VerificationState.ExactMatch,
+                "provider-backed online scan: " + string.Join("; ", cloud.CallbackErrors));
+            Require(File.ReadAllBytes(Path.Combine(d, "online-a")).SequenceEqual(cloud.Data) &&
+                File.ReadAllBytes(Path.Combine(d, "online-b")).SequenceEqual(cloud.Data), "hydrated bytes differ from provider payload");
+        });
+        test("W20 provider fetch failures are reported without false duplicate groups", () =>
+        {
+            string d = Path.Combine(root, "cloud-fetch-error"); Directory.CreateDirectory(d);
+            using var cloud = new CloudFixture(d); cloud.Connect(fail: true);
+            var r = new ScanController().RunAsync(new ScanOptions { Roots = new[] { d }, IncludeOnlineOnlyFiles = true }, default).GetAwaiter().GetResult();
+            Require(cloud.Fetches >= 2 && cloud.CallbackErrors.Count == 0 && r.Groups.Count == 0 && r.HasUncheckedFiles &&
+                r.Counters.ErrorFiles >= 2, "provider failure was omitted or accepted as duplicate content");
         });
         test("W5 writers remain blocked while the shell recycles all aliases", () =>
         {
@@ -348,6 +370,13 @@ static class WindowsAcceptanceTests
     {
         private readonly string _root;
         private bool _registered;
+        private long _connection;
+        private bool _connected;
+        private FetchCallback? _fetch;
+        public byte[] Data { get; } = Enumerable.Range(0, 4096).Select(i => (byte)(i % 251)).ToArray();
+        private int _fetches;
+        public int Fetches => Volatile.Read(ref _fetches);
+        public System.Collections.Concurrent.ConcurrentQueue<string> CallbackErrors { get; } = new();
         public CloudFixture(string root)
         {
             _root = root;
@@ -376,7 +405,41 @@ static class WindowsAcceptanceTests
             catch { Dispose(); throw; }
             finally { Marshal.FreeHGlobal(identity); }
         }
-        public void Dispose() { if (_registered) { CfUnregisterSyncRoot(_root); _registered = false; } }
+        public void Connect(bool fail = false)
+        {
+            Require(IntPtr.Size == 8 && Marshal.OffsetOf<CallbackHead>(nameof(CallbackHead.TransferKey)).ToInt32() == 112,
+                "Cloud provider fixture requires the documented 64-bit callback layout");
+            _fetch = (infoPointer, _) =>
+            {
+                var info = Marshal.PtrToStructure<CallbackHead>(infoPointer);
+                Interlocked.Increment(ref _fetches);
+                var operation = new OperationInfo { StructSize = (uint)Marshal.SizeOf<OperationInfo>(),
+                    ConnectionKey = info.ConnectionKey, TransferKey = info.TransferKey,
+                    RequestKey = info.StructSize >= 152 ? Marshal.ReadInt64(infoPointer, 144) : 0 };
+                var parameters = new TransferParameters { ParamSize = (uint)Marshal.SizeOf<TransferParameters>(),
+                    CompletionStatus = fail ? unchecked((int)0xC0000001) /* STATUS_UNSUCCESSFUL */ : 0, Length = Data.Length };
+                var pinned = GCHandle.Alloc(Data, GCHandleType.Pinned);
+                try
+                {
+                    if (!fail) parameters.Buffer = pinned.AddrOfPinnedObject();
+                    int hr = CfExecute(ref operation, ref parameters);
+                    if (hr < 0) CallbackErrors.Enqueue("CfExecute: 0x" + hr.ToString("X8"));
+                }
+                catch (Exception ex) { CallbackErrors.Enqueue(ex.Message); }
+                finally { pinned.Free(); }
+            };
+            var callbacks = new[] { new CallbackRegistration { Type = 0, Callback = Marshal.GetFunctionPointerForDelegate(_fetch) },
+                new CallbackRegistration { Type = -1 } };
+            int connected = CfConnectSyncRoot(_root, callbacks, IntPtr.Zero, 0, out _connection);
+            Require(connected >= 0, "Cloud provider connection failed: 0x" + connected.ToString("X8"));
+            _connected = true;
+        }
+        public void Dispose()
+        {
+            if (_connected) { CfDisconnectSyncRoot(_connection); _connected = false; }
+            GC.KeepAlive(_fetch);
+            if (_registered) { CfUnregisterSyncRoot(_root); _registered = false; }
+        }
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
@@ -406,6 +469,36 @@ static class WindowsAcceptanceTests
         public Metadata Metadata; public IntPtr Identity; public uint IdentityLength, Flags;
         public int Result; public long Usn;
     }
+    [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+    private delegate void FetchCallback(IntPtr info, IntPtr parameters);
+    [StructLayout(LayoutKind.Sequential)]
+    private struct CallbackRegistration { public int Type; public IntPtr Callback; }
+    // The callback head through TransferKey is common to supported 64-bit SDK versions.
+    [StructLayout(LayoutKind.Sequential)]
+    private struct CallbackHead
+    {
+        public uint StructSize; public long ConnectionKey; public IntPtr Context, VolumeGuid, VolumeDos;
+        public uint Serial; public long RootId; public IntPtr RootIdentity; public uint RootIdentityLength;
+        public long FileId, FileSize; public IntPtr FileIdentity; public uint FileIdentityLength;
+        public IntPtr NormalizedPath; public long TransferKey;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct OperationInfo
+    {
+        public uint StructSize, Type; public long ConnectionKey, TransferKey;
+        public IntPtr CorrelationVector, SyncStatus; public long RequestKey;
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct TransferParameters
+    {
+        public uint ParamSize, Padding, Flags; public int CompletionStatus; public IntPtr Buffer; public long Offset, Length;
+    }
+    [DllImport("cldapi.dll", CharSet = CharSet.Unicode)]
+    private static extern int CfConnectSyncRoot(string path, [In] CallbackRegistration[] callbacks, IntPtr context, uint flags, out long connection);
+    [DllImport("cldapi.dll")]
+    private static extern int CfDisconnectSyncRoot(long connection);
+    [DllImport("cldapi.dll")]
+    private static extern int CfExecute(ref OperationInfo operation, ref TransferParameters parameters);
     [DllImport("cldapi.dll", CharSet = CharSet.Unicode)]
     private static extern int CfRegisterSyncRoot(string path, ref Registration registration, ref Policies policies, uint flags);
     [DllImport("cldapi.dll", CharSet = CharSet.Unicode)]
