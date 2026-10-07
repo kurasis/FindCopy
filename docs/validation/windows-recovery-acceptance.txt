@@ -1,0 +1,24 @@
+ok   I16 unchanged inventory advances checkpoint without rewriting blobs
+ok   I17 checksummed malformed listings fall back without partial replay
+ok   I18 inventory span codec preserves Unicode and avoids per-entry allocations
+ok   R9 recovery journal survives restart and preserves file version
+ok   R10 malformed recovery history is reported without losing valid entries
+ok   W6 long Unicode path recovery preserves identity and ADS without overwriting
+ok   W7 staged recovery refuses missing parents and junction redirection
+ok   W8 recovery refuses a modified staged object
+ok   W9 recovery refuses altered bin metadata and permits a safe retry
+ok   W11 open writers block recovery until their handle closes
+ok   W12 a same-size same-date replacement is never adopted for recovery
+ok   W13 a shell move interrupted before journal update remains recoverable
+ok   W10 independently recycled hard-link aliases restore their original paths
+75 passed, 0 failed, 0 skipped
+17 passed, 0 failed
+PASS UI13 recovery history restores an actual recycled file and disables repeats
+12 passed, 0 failed
+STANDARD_USER: runnervmfi6oq\FindCopyAcceptance, administrator=false
+PASS UI13 recovery history restores an actual recycled file and disables repeats
+PUBLISHED_DIALOG: Подтвердите удаление, button=6, posted=True
+PUBLISHED_DIALOG: Удаление, button=2, posted=True
+PUBLISHED_DIALOG: Подтвердите восстановление, button=6, posted=True
+PASS UI12 published executable scans, recycles, and restores a selected copy
+13 passed, 0 failed

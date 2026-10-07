@@ -15,7 +15,14 @@
               EnableRowVirtualization="True" RowHeaderWidth="0" GridLinesVisibility="None">
       <DataGrid.Columns>
         <DataGridTextColumn Header="Удалён" Binding="{Binding Date}" Width="145"/>
-        <DataGridTextColumn Header="Исходный путь" Binding="{Binding Entry.OriginalPath}" Width="*"/>
+        <DataGridTextColumn Header="Исходный путь" Binding="{Binding Entry.OriginalPath}" Width="*">
+          <DataGridTextColumn.ElementStyle>
+            <Style TargetType="TextBlock">
+              <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+              <Setter Property="ToolTip" Value="{Binding Entry.OriginalPath}"/>
+            </Style>
+          </DataGridTextColumn.ElementStyle>
+        </DataGridTextColumn>
         <DataGridTextColumn Header="Состояние" Binding="{Binding State}" Width="155"/>
       </DataGrid.Columns>
     </DataGrid>

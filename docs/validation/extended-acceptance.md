@@ -88,6 +88,39 @@ enumeration is verified; a universal elapsed-time improvement is not.
 Inventory serialization/cache overhead remains an optimization opportunity.
 No physical-device default is changed from these observations.
 
+### Schema 5 optimization follow-up
+
+The native job in [run 37615247969](https://github.com/kurasis/FindCopy/actions/runs/37615247969/job/112771898985)
+passed all 18 phases on source `88762bc`. [Optimized raw CSV](windows-native-scale-optimized.csv)
+uses the same controlled dataset and a separate VM reporting the same Server
+2025/four-processor/16,378 MiB configuration. Schema 5 retains unchanged
+directory blobs, advances only the atomic root checkpoint, and decodes UTF-16
+name spans without allocating strings in validation/replay.
+
+| Phase | Five million | Ten million |
+| --- | --- | --- |
+| Inventory fill | 11.97 s; 1,727.05 MiB; 503 native directories | 58.74 s; 3,438.91 MiB; 1,003 native directories |
+| Warm inventory | 1.61 s; 1,797.93 MiB; 0 native directories/content reads | 4.23 s; 3,429.04 MiB; 0 native directories/content reads |
+| Rename/add/delete | 1.61 s; only 3 native directories; same group as fresh | 3.03 s; only 3 native directories; same group as fresh |
+| Fresh no-cache oracle | 2.31 s | 9.90 s |
+| Cancel replay | Interrupted at 16,385 files; 0.097 s | Interrupted at 10,000 files; 0.061 s |
+| Warm recovery after cancel | 1.31 s; 0 native enumeration/content reads | 19.50 s; 0 native enumeration/content reads |
+
+Peak sampled working sets across all phases are 1,797.93 MiB (1.76 GiB) and
+3,438.91 MiB (3.36 GiB). Warm elapsed observations changed from 12.35 to 1.61 s
+and from 24.96 to 4.23 s, approximately 7.7x and 5.9x. These are single-run
+observations on separate cloud VMs, not matched-device percentile statistics.
+Initial ten-million inventory fill was slower (58.74 vs 28.75 s), and post-cancel
+recovery took 19.50 s despite zero content I/O/native enumeration. Retaining
+these values makes the timing variability visible; steady latency across
+memory/storage/cache conditions is not established by this suite.
+
+Correctness gates still require complete membership, zero warm native
+enumeration/content reads, fresh-oracle agreement, affected-parent refresh,
+and complete recovery after cancellation. Baseline I16 uses SQLite triggers
+to forbid any unchanged-blob insert/update/delete while confirming that the
+checkpoint advances; I17/I18 cover malformed tails and allocation-free Unicode.
+
 The same dense mode accepts up to 102400 MiB per file. The dedicated workflow
 runs two fully written 50 GiB files on a temporary NTFS runner volume. Dense and
 native checks use independent jobs so neither dataset competes for disk space.

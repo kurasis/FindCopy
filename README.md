@@ -33,7 +33,7 @@ dotnet run -c Release --no-build --project tests/FindCopy.UiTests -- ui-test-art
 ```
 
 These are console runners; `dotnet test` does not execute their assertions.
-Linux reports **54 passed, 0 failed, 8 platform skips**, plus **17 acceptance
+Linux reports **59 passed, 0 failed, 16 platform skips**, plus **17 acceptance
 regressions passed**. Windows executes the native checks and WPF runner; CI
 publishes screenshots and `FindCopy.exe`. See the audit for the verified run.
 The solution includes all six projects.
@@ -72,6 +72,8 @@ The advanced cloud option asks for consent to downloads and local disk usage.
 Settings: `%LOCALAPPDATA%\FindCopy\settings.json`.
 Cache: `%LOCALAPPDATA%\FindCopy\cache.db`, which can be disabled or cleared.
 Schema 5 invalidates older schemas and stores transactional directory inventories.
+Warm scans retain unchanged listing blobs and decode UTF-16 name spans without
+per-entry strings; only changed listings are rewritten at the next checkpoint.
 Ordinary scans do not require elevation; journal availability varies by account
 and filesystem, and unavailable journals never prevent ordinary scanning.
 
@@ -85,9 +87,14 @@ private short directory on the same volume, including for long source paths.
 A read guard blocks writes throughout shell recycling. `IFileOperation` must
 confirm a recycle item; the operation reports zero immediately freed bytes.
 If recycling fails after staging, the UI reports the recovery path and preserves
-`original-path.txt`. Successful recycling cleans the staging directory. Windows
-Recycle Bin restore metadata refers to the staging location; restoring the
-original source path is a manual move, not an application undo feature.
+`original-path.txt`. Successful recycling cleans the staging directory and
+retains per-user deletion history. **Восстановить…** opens that history and
+restores a recorded staged/recycled object to its original path, preserving
+long names, NTFS streams, and hard-link relationships. The command checks the
+object and bin metadata, refuses junction redirection, and never overwrites
+an existing file. Parent directories must exist. Explorer's Restore action
+still targets the staging location; use the application for original-path
+recovery. [Recovery details](docs/recovery.md) describes persistence and limits.
 
 ## Benchmarks
 

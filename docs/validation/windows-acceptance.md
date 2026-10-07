@@ -73,3 +73,30 @@ of an owned duplicate, preservation of its keeper, and exit with code zero.
 [Console evidence](windows-standard-user-acceptance.txt) records 12 passed,
 0 failed. [Extended acceptance](extended-acceptance.md) explains isolation,
 reproduction, dense-file checks, and real five/ten-million-file NTFS evidence.
+
+## Original-path restoration and inventory optimization
+
+[CI run 37616732692](https://github.com/kurasis/FindCopy/actions/runs/37616732692)
+passed on source `5623f9f`: Windows baseline/native 74/74 without skips, audit
+17/17, regular WPF 12/12, and ordinary-user WPF/published EXE 13/13. Linux passed
+59 baseline cases (15 Windows-only skips) and 17 audit cases. Builds have zero
+warnings/errors. [Filtered console evidence](windows-recovery-acceptance.txt)
+records the added native and desktop assertions.
+
+New native checks verify actual long Unicode-name/ADS recovery with original
+file identity, no overwrite on collision, missing directories/junction refusal,
+modified/replaced objects, changed `$I` metadata and safe retry, open writers,
+and independently recycled hard-link aliases. The WPF history window restores
+a real recycled file and disables repeat restoration. The published single-file
+EXE performs search, recycling, original-path restoration through its real
+history window, refreshed scan guidance, and clean shutdown under a non-admin
+account. [Recovery design](../recovery.md) describes the implementation and limits.
+
+[CI run 37617699942](https://github.com/kurasis/FindCopy/actions/runs/37617699942)
+passed on source `b6dd8a3`, adding W13 for a shell move interrupted before its
+journal update and explicit unsupported/corrupt history handling. Windows is
+now 75/75 without skips; Linux is 59 passed with 16 Windows-only skips; audit
+is 17/17 on both hosts. Regular WPF remains 12/12 and ordinary-user acceptance
+13/13. The filtered evidence and [standard-account output](windows-recovery-standard-user.txt)
+record this follow-up. [History screenshot](ui/restored-history.png) shows the
+completed restore and disabled repeat action.

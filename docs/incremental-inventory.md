@@ -29,8 +29,24 @@ works with inventory, journal, or cache unavailable.
 Telemetry distinguishes directories considered by the traversal from actual
 native enumeration: `InventoryDirectoriesReused`, `InventoryEntriesReused`,
 `InventoryRootsRebuilt`, and the native fast/fallback directory counters.
-Fifteen injected acceptance cases compare incremental output against fresh
+Eighteen injected acceptance cases compare incremental output against fresh
 scans, including aliases, renames, resets, corruption, cancellation, and competing
 checkpoints. A separate Windows case exercises the native journal.
 
-Cache schema is now 4. Older schemas are discarded and rebuilt.
+Schema 5 stores the generation at the root checkpoint, rather than on every
+listing row. Each directory read joins that checkpoint and requires the expected
+generation in the same SQL statement. Reused listings stage membership markers
+without copying their blobs. At commit, after checking the expected generation,
+only changed/new blobs are written and unvisited directories are removed; the
+checkpoint advances atomically. Concurrent commits still cannot mix snapshots
+or overwrite a newer checkpoint. This avoids writing a whole unchanged tree
+back to SQLite on every warm scan.
+
+The UTF-16 codec validates the complete bounded, checksummed listing before
+replay and passes name spans directly to the handler. It creates no per-entry
+name strings during either validation or replay. Eighteen inventory cases
+include forbidden-write triggers for unchanged blobs, a valid-checksum malformed
+tail, and Unicode/long-name allocation checks.
+
+Cache schema is now 5. Older schemas are discarded and rebuilt once, including
+fingerprint entries. This changes cache persistence, not the recovery history.
