@@ -9,9 +9,10 @@ generation, late enumeration fallback, and Windows CI. Full specification
 acceptance is still incomplete; see [the roadmap](roadmap.md).
 
 Validation host: Linux x64, .NET SDK 8.0.425. Windows-target compilation and
-publication were checked here. Native Windows UI, NTFS operations, and shell
-recycling were not executed on this host. Added Windows CI is intended to check
-those code paths; its result is separate evidence.
+publication were checked here. Native Windows operations were not executed on this Linux host. The remote
+[Windows CI run](https://github.com/kurasis/FindCopy/actions/runs/37594907779)
+passed the build and both console suites, including native handle staging.
+Interactive WPF behavior and actual cloud/EFS fixtures remain unvalidated.
 
 ## Corrected audit findings
 
@@ -62,6 +63,7 @@ and does not provide Windows mandatory share-mode guarantees.
 | Release solution build (five projects) | 0 warnings, 0 errors |
 | Baseline console suite | 39 passed, 0 failed, 3 platform skips |
 | Acceptance console suite | 17 assertions passed, 0 failed |
+| Remote Windows CI | Baseline: 42 passed, 0 failed, 0 skipped; acceptance: 17 passed, 0 failed; build, publish, and artifact upload passed |
 | Windows self-contained publish from Linux | `FindCopy.exe` generated; not executed |
 | Q4/Q5 sparse fixtures larger than 1 GiB | 14 × 64 KiB sampled, no full hashes, unequal files rejected |
 | Cancellation with two 101 GiB sparse candidates | Stops after initial full-read blocks; completed quick cache entries retained, no partial full hash |
@@ -70,9 +72,10 @@ and does not provide Windows mandatory share-mode guarantees.
 | Reduced A–D, no cache/cold fill/warm cache | 12 successful runs; warm B/C/D read zero content bytes |
 
 The three Linux baseline skips are native NTFS compression, Windows backend
-comparison, and shell Recycle Bin behavior. Windows sparse/compression and a
-real junction-loop fixture are now part of the Windows baseline; their presence
-does not establish successful native execution.
+comparison, and shell Recycle Bin behavior. The Windows baseline includes native
+sparse/compression, junction-loop, enumeration, and shell recycling paths. All 42
+Windows baseline cases passed without skips, and all 17 acceptance assertions
+passed. [Console output](validation/windows-ci.txt) records that run.
 
 CSV evidence: [corrected A–D smoke runs](validation/linux-benchmarks-fixed.csv)
 and [million-file run](validation/linux-million-files.csv).
@@ -87,9 +90,9 @@ files does not establish the specified 5–10 million-file memory envelope.
 1. **USN incremental inventory:** journals invalidate cached fingerprints, but
    the scanner still enumerates the full tree. Avoiding unchanged-directory
    enumeration needs a persisted inventory and recovery strategy.
-2. **Native Windows evidence:** CI has been added, but its results and WPF
-   interaction must be verified on Windows. Actual OneDrive hydration and EFS
-   fixtures still need validation; cloud policy tests use injected attributes.
+2. **Interactive Windows/cloud evidence:** the Windows build and console suites
+   passed in CI, but WPF interaction, actual OneDrive hydration, and EFS fixtures
+   still need validation. Cloud policy tests use injected attributes.
 3. **Recycle Bin long paths:** the shell backend refuses staged paths of 260
    characters or longer. Scanning and permanent Windows handle deletion support
    extended paths; long-path recycling is a separate missing capability.

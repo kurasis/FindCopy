@@ -6,8 +6,8 @@ and timestamps, and checks selected redundant copies again before deletion.
 Repository documentation and maintenance instructions are in English.
 
 The reproduced import-audit defects have been corrected. Full specification
-acceptance is still pending, particularly native Windows execution, complete
-USN incremental enumeration, and device measurements. See the
+acceptance is still pending, particularly interactive Windows/cloud validation,
+complete USN incremental enumeration, and device measurements. See the
 [current implementation audit](docs/implementation-audit.md) and
 [remaining work](docs/roadmap.md). The [original audit](docs/import-audit.md)
 records the imported source's failures; it is historical evidence.
@@ -30,7 +30,9 @@ Both suites are console runners: `dotnet test` does not execute their assertions
 The current Linux run reports **39 passed, 0 failed, 3 skipped** in the baseline
 suite and **17 passed, 0 failed** in acceptance regressions. The solution includes
 both suites. GitHub Actions builds and runs them on Linux and Windows, and
-publishes the Windows executable. Native CI results must be checked separately.
+publishes the Windows executable. Windows reported **42 passed, 0 failed,
+0 skipped** and **17 acceptance assertions passed** in
+[the first correction CI run](https://github.com/kurasis/FindCopy/actions/runs/37594907779).
 
 On Windows, `build.bat test nopause` runs both suites and publishes the
 self-contained x64 single file to `publish\FindCopy.exe`.
@@ -89,7 +91,8 @@ Recycling reports zero immediately freed bytes. If the shell operation fails
 after staging, the result reports the recovery path under
 `.FindCopy-recycle-<id>`; the verified file remains there. The shell backend
 requires staged paths shorter than 260 characters and refuses longer ones.
-Windows runtime validation remains necessary.
+The native staging regression passed in Windows CI; interactive validation of
+recovery and UI behavior remains necessary.
 
 ## Benchmarks
 

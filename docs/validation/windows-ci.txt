@@ -1,0 +1,78 @@
+Windows GitHub Actions console validation
+Run: https://github.com/kurasis/FindCopy/actions/runs/37594907779
+Source commit: 864c633b6c33cb3ee9eb11e96010dfe9ba983e4a
+SDK: 8.0.425
+Run conclusion: success (both operating systems; Windows publishing and artifact upload included)
+
+FindCopy engine tests, root: C:\Users\runneradmin\AppData\Local\Temp\findcopy-tests-05e0f3f4
+  ok   01 same bytes, different names/extensions/timestamps -> duplicate
+  ok   02 same size, different first bytes -> rejected at Q1, no full hash
+  ok   03 same size and start, different end -> rejected at Q2
+  ok   03b large files, same header/footer, different middle -> rejected at Q3
+  ok   04 identical samples, one byte differs outside samples -> full hash detects
+  ok   05 forced hash collision -> ExactVerifier separates files
+  ok   06 two hard links of one object -> not a duplicate
+  ok   07 hard link + real copy -> one redundant physical copy
+  ok   08 directory link loop -> no infinite recursion
+  ok   09 symlink to a file inside the tree -> not a second copy
+  ok   10 file modified during full hash -> CHANGED_DURING_SCAN
+  ok   11 file deleted during scan -> status, scan continues
+  ok   12 access denied -> scan continues
+  ok   13 sparse and regular file with same logical content -> duplicate
+  ok   14 NTFS compressed and uncompressed logical-equivalent files
+  ok   15 zero-byte files -> separate list, reclaimable 0
+  ok   16 Unicode paths
+  ok   17 paths longer than 260 chars
+  ok   18 many files with unique sizes -> zero content I/O
+  ok   19 online-only cloud file -> not read by default
+  ok   20 cancel during large file read -> clean stop
+  ok   21 non-recursive mode ignores subfolders
+  ok   22 system files are skipped
+  ok   23 overlapping roots are not scanned twice
+  ok   24 excluded (system) directories are not descended into
+  ok   25 cache: repeat scan reads no content, same result
+  ok   26 cache: changed file is re-hashed, never a false duplicate
+  ok   27 cache: damaged cache file is rebuilt
+  ok   28 cache: cancelled scan leaves a consistent cache
+  ok   29 USN journal: reported change invalidates cache entry; journal reset drops volume
+  ok   30 NVMe autotune path: concurrent full reads stay correct
+  ok   31 alternate streams mode: named streams must match too
+  ok   32 cache: changed sample size ignores cached quick hashes, keeps full hashes
+       (fast-path directories: 2, fallback: 0)
+  ok   33 enumeration backends agree (FileIdExtdDirectoryInfo vs FindFirstFileExW)
+  ok   D1 delete selected copies, keep one
+  ok   D2 never delete every copy of a group
+  ok   D3 file changed after the scan is not deleted
+  ok   D4 kept copy gone after the scan -> nothing deleted
+  ok   D5 Recycle Bin unavailable -> nothing deleted silently
+  ok   D6 deleting a copy also removes its hard links
+  ok   D7 same file under two paths is never deleted as its own duplicate
+  ok   D8 Recycle Bin mode on a fixed drive
+
+42 passed, 0 failed, 0 skipped
+
+FileRecord fixed bytes: 128
+  PASS R5: fixed metadata meets the approximate 128-byte target
+EXACT_GROWTH: groups=0, verification=, currentBytesEqual=False, changed=1
+  PASS R1: appended unequal tails must not receive EXACT_MATCH
+CACHE_RACE: groups=0, hits=1, contentReads=0, currentBytesEqual=False, changed=1
+  PASS R2: a changed cached candidate must not remain a duplicate
+NO_SNAPSHOT: groups=0, currentBytesEqual=True, changed=0
+  PASS R3: unavailable snapshots are reported before content I/O
+  PASS R3: unavailable snapshots must not allow a modified file to match
+SKIP_QUALIFIER: skipped=1, issues=1, hasUnchecked=True
+  PASS R4: skipped files require a qualified completeness result
+EXTERNAL_ALIAS: links=2, knownAliases=0, outsideExists=True, reportedFreed=0
+  PASS R6: an outside hard link means no physical space was freed
+ALIAS_REPLACEMENT: replaced=True, unrelatedReplacementSurvives=True, outcomeDeleted=True
+  PASS R7: a replacement at an alias path must survive deletion
+  PASS late enumeration fallback emits each file once
+  PASS follow mode fails safely without directory identity
+  PASS Q4/Q5 run only for surviving large candidates
+  PASS 101 GiB cancellation preserves completed quick cache entries only
+  PASS streamed generator preserves non-aligned lengths
+  PASS stable unequal tails remain unequal on a subsequent scan
+  PASS recycling uses the verified staged object and preserves replacements
+  PASS a keeper changed since scan cannot authorize deletion
+  PASS empty duplicates have physical groups without content I/O
+17 passed, 0 failed

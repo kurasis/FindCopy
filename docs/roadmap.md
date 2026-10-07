@@ -3,10 +3,10 @@
 The first correction pass resolves the reproduced import defects and adds
 missing validation and scanner functionality. Continue in this order:
 
-1. Validate the Windows CI result and interactive WPF flow. Exercise native
-   staging, alias replacement, sparse/compressed files, junctions, long paths,
-   and actual recycling. Add actual OneDrive and EFS acceptance fixtures on a
-   suitable Windows host; record unsupported capabilities explicitly.
+1. Extend the passing Windows console-suite CI with interactive WPF validation.
+   Check staged recovery and UI reporting, and add actual OneDrive and EFS
+   acceptance fixtures on a suitable Windows host. Record unsupported
+   capabilities explicitly and keep native regression CI enabled.
 2. Implement a persistent USN inventory keyed by volume and file/directory IDs.
    Record parent/name relationships and root membership. Apply journal deltas
    before traversal; enumerate affected directories while reusing unchanged
