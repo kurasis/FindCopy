@@ -439,39 +439,47 @@ public partial class MainWindow : Window
                 permanent || noBin.Count > 0 ? MessageBoxImage.Warning : MessageBoxImage.Question, MessageBoxResult.No) != MessageBoxResult.Yes)
             return;
 
-        SetBusy(true);
-        _cts = new CancellationTokenSource();
-        PhaseText.Text = "Удаление…";
-        Progress.IsIndeterminate = false;
-        Progress.Value = 0;
         var progress = new Progress<(int Done, int Total, string Path)>(p =>
         {
             Progress.Value = p.Total == 0 ? 1 : (double)p.Done / p.Total;
             CountersText.Text = $"Удаление {p.Done} из {p.Total}: {p.Path}";
         });
         var bin = noBin;
-        List<DeleteOutcome> outcomes;
+        await RunDeletionAsync(token => Task.Run(() => deleter.Run(requests,
+            path => permanent || bin.Contains(path) ? DeleteMode.Permanent : DeleteMode.RecycleBin, progress, token)));
+    }
+
+    internal async Task RunDeletionAsync(Func<CancellationToken, Task<List<DeleteOutcome>>> delete)
+    {
+        if (_cts != null) return;
+        SetBusy(true);
+        _cts = new CancellationTokenSource();
+        PhaseText.Text = "Удаление…";
+        Progress.IsIndeterminate = false;
+        Progress.Value = 0;
         try
         {
-            var token = _cts.Token;
-            outcomes = await Task.Run(() => deleter.Run(requests,
-                path => permanent || bin.Contains(path) ? DeleteMode.Permanent : DeleteMode.RecycleBin, progress, token));
+            var outcomes = await delete(_cts.Token);
+            ApplyDeletion(outcomes);
         }
         catch (OperationCanceledException)
         {
-            outcomes = new List<DeleteOutcome>();
             PhaseText.Text = "Удаление остановлено";
-            MessageBox.Show(this, "Удаление остановлено. Уже удалённые файлы удалены, остальные не тронуты. Запустите поиск заново, чтобы обновить список.",
-                "FindCopy", MessageBoxButton.OK, MessageBoxImage.Information);
+            ShowNotification("Удаление остановлено. Уже удалённые файлы удалены, остальные не тронуты. Запустите поиск заново, чтобы обновить список.",
+                "FindCopy", false);
+        }
+        catch (Exception ex)
+        {
+            PhaseText.Text = "Ошибка удаления";
+            ShowNotification("Удаление прервано из-за ошибки:\n\n" + ex.Message +
+                "\n\nЗапустите поиск заново, чтобы обновить список уже удалённых файлов.", "FindCopy", true);
+        }
+        finally
+        {
             _cts.Dispose();
             _cts = null;
             SetBusy(false);
-            return;
         }
-        _cts.Dispose();
-        _cts = null;
-        ApplyDeletion(outcomes);
-        SetBusy(false);
     }
 
     private void ApplyDeletion(List<DeleteOutcome> outcomes)

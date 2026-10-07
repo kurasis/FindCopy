@@ -122,6 +122,46 @@ internal static class Program
                 Invoke(window, "ApplyDeletion", new List<DeleteOutcome> { new(path, false, "Sharing violation", 0) });
                 Require(Groups(window).Single().SelectedCount == 1 && Result(window).Groups.Single().Files.Count == 2 && _warning, "failed deletion projection");
             });
+            await Test("UI18 deletion errors and cancellation release busy state and preserve selection", async () =>
+            {
+                await window.RunDeletionAsync(_ => Task.FromException<List<DeleteOutcome>>(new IOException("injected deletion failure")));
+                Require(_warning && _notification.Contains("injected deletion failure") &&
+                    Field<CancellationTokenSource?>(window, "_cts") == null &&
+                    Control<Button>(window, "SearchButton").IsEnabled && !Control<Button>(window, "CancelButton").IsEnabled &&
+                    Groups(window).Single().SelectedCount == 1, "failed deletion left the window busy or lost selection");
+                await window.RunDeletionAsync(_ => Task.FromCanceled<List<DeleteOutcome>>(new CancellationToken(canceled: true)));
+                Require(!_warning && _notification.Contains("остановлено") &&
+                    Field<CancellationTokenSource?>(window, "_cts") == null &&
+                    Control<Button>(window, "SearchButton").IsEnabled && !Control<Button>(window, "CancelButton").IsEnabled &&
+                    Groups(window).Single().SelectedCount == 1 && Result(window).Groups.Single().Files.All(f => File.Exists(f.Path)),
+                    "cancelled deletion changed files or left the window busy");
+                await Search(window, pair);
+                Require(Result(window).Groups.Count == 1, "search did not restart after deletion failure");
+            });
+            await Test("UI19 settings replacement preserves the previous file when a reader blocks rename", () =>
+            {
+                string directory = Path.Combine(root, "settings");
+                string path = Path.Combine(directory, "settings.json");
+                var settings = new AppSettings { ReadersHdd = 3, FastEnumeration = false };
+                settings.Save(path);
+                Require(AppSettings.Load(path).ReadersHdd == 3 && !AppSettings.Load(path).FastEnumeration, "initial settings did not round trip");
+                settings.ReadersHdd = 5;
+                settings.Save(path);
+                Require(AppSettings.Load(path).ReadersHdd == 5, "settings update did not replace the file");
+                string previous = File.ReadAllText(path);
+                // Read/write sharing allows in-place writes, but Windows denies replacing this open file.
+                using (var reader = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                {
+                    settings.ReadersHdd = 6;
+                    settings.Save(path);
+                    Require(File.ReadAllText(path) == previous, "failed replacement modified the previous settings");
+                }
+                Require(!Directory.EnumerateFiles(directory, "*.tmp").Any(), "failed settings replacement left a temporary file");
+                settings.Save(path);
+                Require(AppSettings.Load(path).ReadersHdd == 6 && !Directory.EnumerateFiles(directory, "*.tmp").Any(),
+                    "settings could not be saved after the reader closed");
+                return Task.CompletedTask;
+            });
             await Test("UI7 native policy exclusions qualify no-duplicate wording", async () =>
             {
                 string d = Path.Combine(root, "excluded"); Directory.CreateDirectory(d);

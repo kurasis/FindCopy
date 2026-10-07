@@ -7,6 +7,7 @@ namespace FindCopy.App;
 /// <summary>Performance settings the user can tune from benchmark results (ТЗ §26). Saved as JSON.</summary>
 public sealed class AppSettings
 {
+    private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
     public int SmallFileThresholdKiB { get; set; } = 1024;
     public int SampleSizeKiB { get; set; } = 64;
     public int StreamBufferKiB { get; set; } = 1024;
@@ -21,25 +22,43 @@ public sealed class AppSettings
     private static string FilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FindCopy", "settings.json");
 
-    public static AppSettings Load()
+    public static AppSettings Load() => Load(FilePath);
+
+    internal static AppSettings Load(string path)
     {
         try
         {
-            if (File.Exists(FilePath))
-                return (JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(FilePath)) ?? new AppSettings()).Sanitized();
+            if (File.Exists(path))
+                return (JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path)) ?? new AppSettings()).Sanitized();
         }
         catch { }
         return new AppSettings();
     }
 
-    public void Save()
+    public void Save() => Save(FilePath);
+
+    internal void Save(string path)
     {
+        string? temporary = null;
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true }));
+            path = Path.GetFullPath(path);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            using (var stream = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                JsonSerializer.Serialize(stream, this, Json);
+                stream.Flush(flushToDisk: true);
+            }
+            File.Move(temporary, path, overwrite: true);
         }
         catch { }
+        finally
+        {
+            if (temporary != null)
+                try { File.Delete(temporary); }
+                catch { /* Saving settings remains best effort, including temporary-file cleanup. */ }
+        }
     }
 
     public AppSettings Sanitized()
