@@ -105,6 +105,29 @@ static class WindowsAcceptanceTests
             Require(cloud.Fetches >= 2 && cloud.CallbackErrors.Count == 0 && r.Groups.Count == 0 && r.HasUncheckedFiles &&
                 r.Counters.ErrorFiles >= 2, "provider failure was omitted or accepted as duplicate content");
         });
+        test("W21 large online candidates retry samples after hydration closes the handle", () =>
+        {
+            string d = Path.Combine(root, "cloud-large"); Directory.CreateDirectory(d);
+            using var cloud = new CloudFixture(d, 4 * 1024 * 1024); cloud.Connect();
+            var r = new ScanController().RunAsync(new ScanOptions { Roots = new[] { d }, IncludeOnlineOnlyFiles = true,
+                ExactVerification = true }, default).GetAwaiter().GetResult();
+            Require(cloud.Fetches >= 2 && cloud.CallbackErrors.Count == 0 && !r.HasUncheckedFiles &&
+                r.Counters.QuickHashFiles >= 4 && r.Groups.Count == 1 && r.Groups[0].Verification == VerificationState.ExactMatch,
+                "large hydrated sample/full/exact pipeline: " + string.Join("; ", r.Issues));
+        });
+        test("W22 writes during cloud download cannot use the hydration metadata retry", () =>
+        {
+            string d = Path.Combine(root, "cloud-write"); Directory.CreateDirectory(d);
+            using var cloud = new CloudFixture(d); cloud.Connect();
+            string victim = Path.Combine(d, "online-a");
+            var r = new ScanController().RunAsync(new ScanOptions { Roots = new[] { d }, IncludeOnlineOnlyFiles = true,
+                AfterFullHashBlock = (path, _) =>
+                {
+                    if (path == victim) File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddDays(1));
+                } }, default).GetAwaiter().GetResult();
+            Require(r.Groups.Count == 0 && r.HasUncheckedFiles && r.Counters.ChangedFiles >= 1,
+                "concurrent cloud write was accepted");
+        });
         test("W5 writers remain blocked while the shell recycles all aliases", () =>
         {
             string d = Path.Combine(root, "recycle-guard"); Directory.CreateDirectory(d);
@@ -387,13 +410,14 @@ static class WindowsAcceptanceTests
         private long _connection;
         private bool _connected;
         private FetchCallback? _fetch;
-        public byte[] Data { get; } = Enumerable.Range(0, 4096).Select(i => (byte)(i % 251)).ToArray();
+        public byte[] Data { get; }
         private int _fetches;
         public int Fetches => Volatile.Read(ref _fetches);
         public System.Collections.Concurrent.ConcurrentQueue<string> CallbackErrors { get; } = new();
-        public CloudFixture(string root)
+        public CloudFixture(string root, int size = 4096)
         {
             _root = root;
+            Data = Enumerable.Range(0, size).Select(i => (byte)(i % 251)).ToArray();
             var registration = new Registration { StructSize = (uint)Marshal.SizeOf<Registration>(),
                 ProviderName = "FindCopy acceptance fixture", ProviderVersion = "1.0", ProviderId = Guid.NewGuid() };
             var policy = new Policies { StructSize = (uint)Marshal.SizeOf<Policies>(), PopulationPrimary = 2 };
@@ -408,8 +432,8 @@ static class WindowsAcceptanceTests
                 Marshal.Copy(Guid.NewGuid().ToByteArray(), 0, identity, 16);
                 var entries = new[]
                 {
-                    new Placeholder { Name = "online-a", Metadata = new Metadata { Size = 4096, Attributes = 0x80 }, Identity = identity, IdentityLength = 16, Flags = 2 },
-                    new Placeholder { Name = "online-b", Metadata = new Metadata { Size = 4096, Attributes = 0x80 }, Identity = identity, IdentityLength = 16, Flags = 2 },
+                    new Placeholder { Name = "online-a", Metadata = new Metadata { Size = Data.Length, Attributes = 0x80 }, Identity = identity, IdentityLength = 16, Flags = 2 },
+                    new Placeholder { Name = "online-b", Metadata = new Metadata { Size = Data.Length, Attributes = 0x80 }, Identity = identity, IdentityLength = 16, Flags = 2 },
                 };
                 hr = CfCreatePlaceholders(root, entries, 2, 1, out uint processed);
                 Require(hr >= 0 && processed == 2 && entries.All(e => e.Result >= 0), "native placeholder creation failed: 0x" + hr.ToString("X8"));

@@ -514,6 +514,36 @@ internal sealed class ScanRun
         (!r.HasIdentity || (s.HasIdentity && r.VolumeSerial == s.VolumeSerial &&
             r.FileIdLow == s.FileIdLow && r.FileIdHigh == s.FileIdHigh));
 
+    private bool IsDownloadingCloudFile(int rec) => _opt.IncludeOnlineOnlyFiles &&
+        ReparseTags.IsCloud(_records[rec].ReparseTag) && (_records[rec].Attributes & FileAttr.NotLocalMask) != 0;
+
+    // Hydration can change metadata on the last data handle's close. Discard the
+    // read and retry once against the new version; never adopt a hash from it.
+    private bool TryRefreshHydratedVersion(int rec)
+    {
+        if (!IsDownloadingCloudFile(rec)) return false;
+        var status = _fs.GetIdentity(PathOf(rec), out var id);
+        ref var r = ref _records[rec];
+        if (status != FileStatus.Ok || !r.HasIdentity || !id.Valid ||
+            id.VolumeSerial != r.VolumeSerial || id.FileIdLow != r.FileIdLow || id.FileIdHigh != r.FileIdHigh ||
+            id.Size != r.Size || id.LastWriteTicks != r.LastWriteTicks || id.CreationTicks != r.CreationTicks ||
+            id.ChangeTicks == r.ChangeTicks) return false;
+        r.ChangeTicks = id.ChangeTicks;
+        r.AllocatedSize = id.AllocatedSize;
+        return true;
+    }
+
+    private FileStatus CheckClosedCloudRead(int rec)
+    {
+        var status = _fs.GetIdentity(PathOf(rec), out var id);
+        if (status != FileStatus.Ok) return status;
+        ref var r = ref _records[rec];
+        return id.Valid && r.HasIdentity && id.Size == r.Size && id.LastWriteTicks == r.LastWriteTicks &&
+            id.CreationTicks == r.CreationTicks && id.ChangeTicks == r.ChangeTicks &&
+            id.VolumeSerial == r.VolumeSerial && id.FileIdLow == r.FileIdLow && id.FileIdHigh == r.FileIdHigh
+            ? FileStatus.Ok : FileStatus.ChangedDuringScan;
+    }
+
     private bool ValidateVersion(int rec)
     {
         if (_records[rec].Status != FileStatus.Ok) return false;
@@ -553,27 +583,20 @@ internal sealed class ScanRun
         _io.Run(items, DomainOf, _t.QuickReaders, sample, false, (rec, buf, _) =>
         {
             string path = PathOf(rec);
-            ref var r = ref _records[rec];
             try
             {
-                using var h = _fs.OpenRead(path, sequential: false);
-                if (!_fs.TryGetSnapshot(h, path, out var before)) { Fail(rec, FileStatus.Unsupported, "Метаданные для проверки изменений недоступны"); return; }
-                if (!MatchesVersion(r, before)) { Fail(rec, FileStatus.ChangedDuringScan, "Размер изменился во время сканирования"); return; }
-                long off = offsetFor(r.Size);
-                int want = (int)Math.Min(sample, r.Size - off);
-                int got = 0;
-                while (got < want)
+                for (int attempt = 0; attempt < 2; attempt++)
                 {
-                    _ct.ThrowIfCancellationRequested();
-                    int n = RandomAccess.Read(h, buf.AsSpan(got, want - got), off + got);
-                    Interlocked.Add(ref _c.QuickHashBytesRead, n);
-                    if (n == 0) break;
-                    got += n;
+                    var status = SampleOnce(rec, path, stage, offsetFor, buf, out var message);
+                    if (status == FileStatus.Ok)
+                    {
+                        Interlocked.Increment(ref _c.QuickHashFiles);
+                        return;
+                    }
+                    if (attempt == 0 && status == FileStatus.ChangedDuringScan && TryRefreshHydratedVersion(rec)) continue;
+                    Fail(rec, status, message);
+                    return;
                 }
-                if (got != want) { Fail(rec, FileStatus.ChangedDuringScan, "Файл укоротился во время чтения"); return; }
-                if (!_fs.TryGetSnapshot(h, path, out var after) || !after.Equals(before)) { Fail(rec, FileStatus.ChangedDuringScan, "Файл изменился во время выборки"); return; }
-                QSlot(ref r, stage) = _quick.Hash(buf.AsSpan(0, got));
-                Interlocked.Increment(ref _c.QuickHashFiles);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -598,6 +621,42 @@ internal sealed class ScanRun
             }
         }
         return result;
+    }
+
+    private FileStatus SampleOnce(int rec, string path, int stage, Func<long, long> offsetFor,
+        byte[] buf, out string? message)
+    {
+        message = null;
+        ref var r = ref _records[rec];
+        using var h = _fs.OpenRead(path, sequential: false);
+        if (!_fs.TryGetSnapshot(h, path, out var before))
+        { message = "Метаданные для проверки изменений недоступны"; return FileStatus.Unsupported; }
+        if (!MatchesVersion(r, before))
+        { message = "Версия файла изменилась во время сканирования"; return FileStatus.ChangedDuringScan; }
+        long off = offsetFor(r.Size);
+        int want = (int)Math.Min(_t.SampleSize, r.Size - off);
+        int got = 0;
+        while (got < want)
+        {
+            _ct.ThrowIfCancellationRequested();
+            int n = RandomAccess.Read(h, buf.AsSpan(got, want - got), off + got);
+            Interlocked.Add(ref _c.QuickHashBytesRead, n);
+            if (n == 0) break;
+            got += n;
+        }
+        if (got != want)
+        { message = "Файл укоротился во время чтения"; return FileStatus.ChangedDuringScan; }
+        if (!_fs.TryGetSnapshot(h, path, out var after) || !after.Equals(before))
+        { message = "Файл изменился во время выборки"; return FileStatus.ChangedDuringScan; }
+        if (IsDownloadingCloudFile(rec))
+        {
+            h.Dispose();
+            var closed = CheckClosedCloudRead(rec);
+            if (closed != FileStatus.Ok)
+            { message = "Версия облачного файла изменилась после чтения"; return closed; }
+        }
+        QSlot(ref r, stage) = _quick.Hash(buf.AsSpan(0, got));
+        return FileStatus.Ok;
     }
 
     // ------------------------------------------------------------------ Full hash (ТЗ §10, §12)
@@ -629,6 +688,7 @@ internal sealed class ScanRun
                     Fail(rec, outcome, msg);
                     return;
                 }
+                TryRefreshHydratedVersion(rec);
             }
         }, _ct, _t.FullReadersStart, i => _records[i].Size);
         StoreFull(items, snapshots);
@@ -686,6 +746,18 @@ internal sealed class ScanRun
                 message = "Файл изменился во время хеширования";
                 Interlocked.Add(ref _c.StageDone, -progressed);
                 return FileStatus.ChangedDuringScan;
+            }
+
+            if (IsDownloadingCloudFile(rec))
+            {
+                h.Dispose();
+                var closed = CheckClosedCloudRead(rec);
+                if (closed != FileStatus.Ok)
+                {
+                    message = "Версия облачного файла изменилась после чтения";
+                    Interlocked.Add(ref _c.StageDone, -progressed);
+                    return closed;
+                }
             }
 
             state.Finalize(_fullHashes.AsSpan(_records[rec].FullHashSlot * 32, 32));

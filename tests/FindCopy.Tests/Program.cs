@@ -691,7 +691,7 @@ if (OperatingSystem.IsWindows())
     WindowsAcceptanceTests.Run(Test, root);
     WindowsAcceptanceTests.RunRecovery(Test, root);
 }
-else { skipped += 20; Console.WriteLine("  SKIP W1-W20 native filesystem and recovery checks require Windows"); }
+else { skipped += 22; Console.WriteLine("  SKIP W1-W22 native filesystem and recovery checks require Windows"); }
 try { Directory.Delete(root, true); } catch { }
 Console.WriteLine($"\n{passed} passed, {failed} failed, {skipped} skipped");
 return failed == 0 ? 0 : 1;

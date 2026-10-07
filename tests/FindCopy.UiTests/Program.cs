@@ -152,7 +152,7 @@ internal static class Program
                 var dismiss = new Thread(() =>
                 {
                     var deadline = Stopwatch.StartNew();
-                    while (deadline.Elapsed < TimeSpan.FromSeconds(10))
+                    while (deadline.Elapsed < TimeSpan.FromSeconds(12))
                     {
                         IntPtr dialog = FindWindowW("#32770", "Облачные файлы");
                         if (dialog != IntPtr.Zero)
@@ -172,6 +172,13 @@ internal static class Program
                                     dialogText = captured;
                                     SendMessageW(dialog, 0x0111 /* WM_COMMAND */, new IntPtr(7) /* IDNO */, IntPtr.Zero);
                                     dismissed = true; return;
+                                }
+                                // Unblock the modal call on failure so the assertion can report it.
+                                if (deadline.Elapsed >= TimeSpan.FromSeconds(10))
+                                {
+                                    dialogText = captured;
+                                    SendMessageW(dialog, 0x0111 /* WM_COMMAND */, new IntPtr(7) /* IDNO */, IntPtr.Zero);
+                                    return;
                                 }
                             }
                         }
