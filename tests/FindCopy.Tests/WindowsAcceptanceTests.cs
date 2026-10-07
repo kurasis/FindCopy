@@ -66,6 +66,33 @@ static class WindowsAcceptanceTests
                 r.IssueCounts.GetValueOrDefault(FileStatus.CloudContentNotLocal) == 2 && r.HasUncheckedFiles,
                 "real non-local placeholders were not excluded");
         });
+        test("W5 writers remain blocked while the shell recycles all aliases", () =>
+        {
+            string d = Path.Combine(root, "recycle-guard"); Directory.CreateDirectory(d);
+            File.WriteAllText(Path.Combine(d, "a"), "guarded pair"); File.WriteAllText(Path.Combine(d, "b"), "guarded pair");
+            Native.HardLink(Path.Combine(d, "b"), Path.Combine(d, "alias"));
+            var r = Scan(d); var g = r.Groups.Single(); var candidate = g.Files.Single(f => f.HardLinkAliasCount == 1);
+            var backend = new WriterProbe();
+            var result = new DuplicateDeleter(backend: backend).Run(new[] { new DeleteRequest(g, new[] { candidate }) }, DeleteMode.RecycleBin).Single();
+            Require(result.Deleted && result.Reason == null && backend.Blocked == 2, "recycle write guard: " + result.Reason);
+        });
+    }
+
+    private sealed class WriterProbe : IDeletionBackend
+    {
+        private readonly IDeletionBackend _inner = new WindowsDeletionBackend();
+        public int Blocked;
+        public Microsoft.Win32.SafeHandles.SafeFileHandle OpenKeeper(string path) => _inner.OpenKeeper(path);
+        public Microsoft.Win32.SafeHandles.SafeFileHandle OpenCandidate(string path) => _inner.OpenCandidate(path);
+        public bool DeletePermanently(Microsoft.Win32.SafeHandles.SafeFileHandle handle, string path, out string? error) => _inner.DeletePermanently(handle, path, out error);
+        public bool RecycleBinAvailable(string path) => _inner.RecycleBinAvailable(path);
+        public bool StageForRecycle(Microsoft.Win32.SafeHandles.SafeFileHandle handle, string original, out string staged, out string? error) => _inner.StageForRecycle(handle, original, out staged, out error);
+        public bool MoveToRecycleBin(string path, out string? error)
+        {
+            try { using var writer = File.OpenHandle(path, FileMode.Open, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete); }
+            catch (IOException ex) when ((ex.HResult & 0xffff) is 32 or 33) { Blocked++; }
+            return _inner.MoveToRecycleBin(path, out error);
+        }
     }
 
     private static ScanResult Scan(string root, string? cache = null, bool exact = true) => new ScanController().RunAsync(

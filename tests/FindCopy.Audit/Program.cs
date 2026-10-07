@@ -186,7 +186,11 @@ sealed class RecycleProbe : IDeletionBackend
     {
         if (!Staged || File.ReadAllText(path) == "replacement at original path") throw new IOException("Unverified recycle path");
         File.Delete(path); error = null;
-        if (OperatingSystem.IsWindows()) Directory.Delete(Path.GetDirectoryName(path)!);
+        if (OperatingSystem.IsWindows())
+        {
+            File.Delete(Path.Combine(Path.GetDirectoryName(path)!, "original-path.txt"));
+            Directory.Delete(Path.GetDirectoryName(path)!);
+        }
         return true;
     }
 }

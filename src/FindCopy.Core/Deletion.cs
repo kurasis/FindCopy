@@ -35,6 +35,9 @@ public interface IDeletionBackend
     /// <summary>True when files on this path's volume can go to the Recycle Bin.</summary>
     bool RecycleBinAvailable(string path);
     bool MoveToRecycleBin(string path, out string? error);
+    /// <summary>Blocks writers without requiring the shell to share DELETE access with this guard.</summary>
+    SafeFileHandle OpenRecycleGuard(string stagedPath) => File.OpenHandle(stagedPath, FileMode.Open,
+        FileAccess.Read, FileShare.Read | FileShare.Delete, FileOptions.SequentialScan);
     /// <summary>Atomically moves the verified open object into a private same-volume namespace.</summary>
     bool StageForRecycle(SafeFileHandle candidate, string originalPath, out string stagedPath, out string? error)
     {
@@ -177,6 +180,8 @@ public sealed class DuplicateDeleter
         catch (Exception ex) when (ex is not OperationCanceledException) { return No("Не удалось открыть: " + ex.Message); }
 
         bool closed = false;
+        SafeFileHandle? recycleGuard = null;
+        string? recoveryPath = null;
         try
         {
             // Unchanged since the scan: the user decided about exactly this file.
@@ -220,6 +225,11 @@ public sealed class DuplicateDeleter
             {
                 if (!_backend.StageForRecycle(cand, f.Path, out var staged, out err))
                     return No("Не удалось безопасно подготовить корзину: " + err);
+                recoveryPath = staged;
+                recycleGuard = _backend.OpenRecycleGuard(staged);
+                if (!_fs.TryGetSnapshot(recycleGuard, staged, out var guarded) || !SameObject(before, guarded) ||
+                    guarded.Size != before.Size || guarded.LastWriteTicks != before.LastWriteTicks)
+                    return new DeleteOutcome(f.Path, true, "Не удалось защитить проверенный файл; он сохранён в " + staged, 0);
                 cand.Dispose();
                 closed = true;
                 if (!_backend.MoveToRecycleBin(staged, out err))
@@ -270,10 +280,12 @@ public sealed class DuplicateDeleter
             return new DeleteOutcome(f.Path, true, note, freed);
         }
         catch (OperationCanceledException) { throw; }
-        catch (Exception ex) { return No("Ошибка: " + ex.Message); }
+        catch (Exception ex) { return recoveryPath == null ? No("Ошибка: " + ex.Message)
+            : new DeleteOutcome(f.Path, true, "Проверенный файл сохранён в " + recoveryPath + ": " + ex.Message, 0); }
         finally
         {
             if (!closed) cand.Dispose();
+            recycleGuard?.Dispose();
         }
     }
 
@@ -403,33 +415,51 @@ public sealed unsafe class WindowsDeletionBackend : IDeletionBackend
     {
         stagedPath = "";
         error = null;
-        string directory = Path.Combine(Path.GetDirectoryName(originalPath)!, ".FindCopy-recycle-" + Guid.NewGuid().ToString("N"));
-        string destination = Path.Combine(directory, Path.GetFileName(originalPath));
-        try
+        var fs = new WindowsFileSystem();
+        if (!fs.TryGetSnapshot(candidate, originalPath, out var verified) || !verified.HasIdentity)
+        { error = "Идентичность открытого файла недоступна"; return false; }
+        string filename = Path.GetFileName(originalPath);
+        if (filename.Length > 100) filename = "file-" + Guid.NewGuid().ToString("N");
+        var parents = new[] { Path.GetTempPath(), Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            Path.GetPathRoot(originalPath)!, Path.GetDirectoryName(originalPath)! }.Distinct(StringComparer.OrdinalIgnoreCase);
+        foreach (string parent in parents)
         {
-            var security = new DirectorySecurity();
-            security.SetAccessRuleProtection(true, false);
-            security.AddAccessRule(new FileSystemAccessRule(WindowsIdentity.GetCurrent().User!, FileSystemRights.FullControl,
-                InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
-            new DirectoryInfo(directory).Create(security);
-            string extended = WindowsFileSystem.ToExtendedPath(destination);
-            int offset = IntPtr.Size == 8 ? 20 : 12;
-            byte[] info = new byte[offset + extended.Length * 2];
-            fixed (byte* buffer = info)
+            if (string.IsNullOrEmpty(parent) || !fs.TryGetDirectoryIdentity(parent, out var parentId) || parentId.Vol != verified.VolumeSerial) continue;
+            string directory = Path.Combine(parent, ".FindCopy-recycle-" + Guid.NewGuid().ToString("N"));
+            string destination = Path.Combine(directory, filename);
+            // Shell namespaces still impose path limits on some hosts. Handle-bound staging makes
+            // a long source path safe without depending on those namespace parsing limits.
+            if (destination.Length >= 240) continue;
+            try
             {
-                *(uint*)(buffer + offset - 4) = (uint)(extended.Length * 2);
-                extended.AsSpan().CopyTo(new Span<char>(buffer + offset, extended.Length));
-                if (!SetFileInformationByHandle(candidate, 3 /* FileRenameInfo */, buffer, (uint)info.Length))
+                var security = new DirectorySecurity();
+                security.SetAccessRuleProtection(true, false);
+                security.AddAccessRule(new FileSystemAccessRule(WindowsIdentity.GetCurrent().User!, FileSystemRights.FullControl,
+                    InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
+                new DirectoryInfo(directory).Create(security);
+                File.WriteAllText(Path.Combine(directory, "original-path.txt"), originalPath);
+                string extended = WindowsFileSystem.ToExtendedPath(destination);
+                int offset = IntPtr.Size == 8 ? 20 : 12;
+                byte[] info = new byte[offset + extended.Length * 2];
+                fixed (byte* buffer = info)
                 {
-                    error = new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error()).Message;
-                    Directory.Delete(directory);
-                    return false;
+                    *(uint*)(buffer + offset - 4) = (uint)(extended.Length * 2);
+                    extended.AsSpan().CopyTo(new Span<char>(buffer + offset, extended.Length));
+                    if (!SetFileInformationByHandle(candidate, 3 /* FileRenameInfo */, buffer, (uint)info.Length))
+                    {
+                        error = new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error()).Message;
+                        File.Delete(Path.Combine(directory, "original-path.txt"));
+                        Directory.Delete(directory);
+                        continue;
+                    }
                 }
+                stagedPath = destination;
+                return true;
             }
-            stagedPath = destination;
-            return true;
+            catch (Exception ex) { error = ex.Message; }
         }
-        catch (Exception ex) { error = ex.Message; return false; }
+        error ??= "Нет доступного короткого каталога на том же томе для безопасной корзины";
+        return false;
     }
 
     public bool MoveToRecycleBin(string path, out string? error)
@@ -438,9 +468,13 @@ public sealed unsafe class WindowsDeletionBackend : IDeletionBackend
         try
         {
             string? parent = Path.GetDirectoryName(path);
-            if (parent != null && Path.GetFileName(parent).StartsWith(".FindCopy-recycle-", StringComparison.Ordinal)) Directory.Delete(parent);
+            if (parent != null && Path.GetFileName(parent).StartsWith(".FindCopy-recycle-", StringComparison.Ordinal))
+            {
+                File.Delete(Path.Combine(parent, "original-path.txt"));
+                Directory.Delete(parent);
+            }
         }
-        catch { /* Leave a harmless empty staging directory if cleanup is unavailable. */ }
+        catch { /* A recovery manifest may remain if staging cleanup is unavailable. */ }
         return true;
     }
 

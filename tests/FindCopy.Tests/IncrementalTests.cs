@@ -93,7 +93,7 @@ static class IncrementalTests
         test("I12 damaged listing payloads fall back before emitting entries", () =>
         {
             using var f = new Fixture(parent); f.Seed();
-            using (var db = new SqliteConnection("Data Source=" + f.Cache))
+            using (var db = new SqliteConnection("Data Source=" + f.Cache + ";Pooling=False"))
             {
                 db.Open(); using var c = db.CreateCommand();
                 c.CommandText = "UPDATE inventory_dirs SET entries=X'01020304';"; c.ExecuteNonQuery();
