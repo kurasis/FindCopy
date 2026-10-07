@@ -48,6 +48,15 @@ jobs:
           project = api(f'repos/{repo}/contents/src/FindCopy.App/FindCopy.App.csproj?ref={sha}')
           version = ET.fromstring(base64.b64decode(project['content'])).findtext('./PropertyGroup/Version')
           assert tag == 'v' + version, 'Release tag must match the validated application version'
+          refs = api(f'repos/{repo}/git/matching-refs/tags/{tag}')
+          existing = [ref for ref in refs if ref['ref'] == f'refs/tags/{tag}']
+          if existing:
+              obj = existing[0]['object']
+              for _ in range(10):
+                  if obj['type'] != 'tag':
+                      break
+                  obj = api(f'repos/{repo}/git/tags/{obj["sha"]}')['object']
+              assert obj['type'] == 'commit' and obj['sha'] == sha, 'Existing tag points to a different build source'
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               output.write(f'sha={sha}\n')
           print(f'Publishing {tag} from {sha}; validation attempt {run["run_attempt"]}')
