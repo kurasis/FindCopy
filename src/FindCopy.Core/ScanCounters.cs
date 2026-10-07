@@ -28,7 +28,7 @@ public sealed class ScanCounters
     public long ExactMatchGroups;
     public long SkippedFiles;     // excluded by policy: reparse, cloud, system, hidden
     public long SkippedDirectories;
-    public long SystemSkipped;    // subset of SkippedFiles, not itemised in the error list
+    public long SystemSkipped;    // subset of SkippedFiles; reported as policy issues
     public long ErrorFiles;       // access denied, IO errors, vanished
     public long ChangedFiles;
     public long ZeroByteFiles;

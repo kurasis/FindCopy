@@ -54,15 +54,26 @@ public sealed partial class ScanCache : IDisposable
         _db = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadWriteCreate, Pooling = false }.ToString());
         try
         {
-            _db.Open();
-            Exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000;");
-            InitSchema();
+            try
+            {
+                Initialize();
+            }
+            catch (SqliteException ex) when (ex.SqliteErrorCode is 11 or 26)
+            {
+                // A damaged cache is just thrown away: it can only cost re-hashing, never a false duplicate.
+                _db.Close();
+                foreach (var f in new[] { path, path + "-wal", path + "-shm" }) try { File.Delete(f); } catch { }
+                Initialize();
+            }
         }
-        catch (SqliteException ex) when (ex.SqliteErrorCode is 11 or 26)
+        catch
         {
-            // A damaged cache is just thrown away: it can only cost re-hashing, never a false duplicate.
-            _db.Close();
-            foreach (var f in new[] { path, path + "-wal", path + "-shm" }) try { File.Delete(f); } catch { }
+            _db.Dispose();
+            throw;
+        }
+
+        void Initialize()
+        {
             _db.Open();
             Exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000;");
             InitSchema();

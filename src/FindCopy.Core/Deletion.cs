@@ -108,17 +108,20 @@ public sealed class DuplicateDeleter
                 foreach (var k in keepers)
                 {
                     ct.ThrowIfCancellationRequested();
+                    SafeFileHandle? h = null;
                     try
                     {
-                        var h = _backend.OpenKeeper(k.Path);
+                        h = _backend.OpenKeeper(k.Path);
                         if (!_fs.TryGetSnapshot(h, k.Path, out var snapshot) || !snapshot.HasIdentity ||
-                            !MatchesScan(k, snapshot) || snapshot.Size != g.LogicalSize) { h.Dispose(); continue; }
+                            !MatchesScan(k, snapshot) || snapshot.Size != g.LogicalSize) continue;
                         keeperHandle = h;
+                        h = null; // Ownership transfers to the group only after validation succeeds.
                         keeper = k;
                         keeperId = IdentityOf(snapshot);
                         break;
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException) { }
+                    finally { h?.Dispose(); }
                 }
                 if (keeperHandle == null || keeper == null)
                 {
