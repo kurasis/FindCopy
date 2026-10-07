@@ -9,6 +9,7 @@ public partial class App : Application
     {
         DispatcherUnhandledException += OnUnhandled;
         base.OnStartup(e);
+        new MainWindow().Show();
     }
 
     private static void OnUnhandled(object sender, DispatcherUnhandledExceptionEventArgs e)

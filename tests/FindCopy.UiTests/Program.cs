@@ -21,8 +21,8 @@ internal static class Program
     {
         _artifacts = Path.GetFullPath(args.Length == 0 ? "ui-test-artifacts" : args[0]);
         Directory.CreateDirectory(_artifacts);
-        var app = new App(); app.InitializeComponent();
-        app.StartupUri = null; app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        var app = new TestApplication(); app.InitializeComponent();
+        app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
         app.Dispatcher.InvokeAsync(async () =>
         {
             try { await Run(); }
@@ -192,6 +192,11 @@ internal static class Program
     {
         public string Notification = ""; public bool Warning;
         protected override void ShowNotification(string message, string title, bool warning) { Notification = message; Warning = warning; }
+    }
+    private sealed class TestApplication : App
+    {
+        // The runner creates its own window and must surface dispatcher failures.
+        protected override void OnStartup(StartupEventArgs e) { }
     }
     private delegate bool EnumWindow(IntPtr window, IntPtr parameter);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr FindWindowW(string className, string title);
