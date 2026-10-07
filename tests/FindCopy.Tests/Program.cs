@@ -684,6 +684,31 @@ if (OperatingSystem.IsWindows())
 
 else { skipped++; Console.WriteLine("  SKIP D8 native Recycle Bin requires Windows"); }
 
+if (canStat)
+{
+    Test("C1 late cloud metadata requires a fresh hash and repeated exact comparison", () =>
+    {
+        var d = NewDir("cloud-late-metadata"); var data = Rand(4096, 921);
+        File.WriteAllBytes(Path.Combine(d, "a"), data); File.WriteAllBytes(Path.Combine(d, "b"), data);
+        var fs = new DelayedCloudMetadataFs(OperatingSystem.IsWindows() ? new WindowsFileSystem() : new PortableFileSystem());
+        var r = Scan(d, o => { o.IncludeOnlineOnlyFiles = true; o.ExactVerification = true; }, fs: fs);
+        Check(r.Groups.Count == 1 && r.Groups[0].Verification == VerificationState.ExactMatch && !r.HasUncheckedFiles, "late unchanged cloud version lost: " + string.Join("; ", r.Issues));
+        Check(r.Counters.FullHashBytesRead == 4 * data.Length && r.Counters.ExactCompareBytesRead == 2 * data.Length,
+            "previous hashes were reused without complete rehash/exact reads");
+    });
+    Test("C2 metadata-only cloud retry cannot retain a changed payload's old group", () =>
+    {
+        var d = NewDir("cloud-late-content"); var data = Rand(4096, 922);
+        File.WriteAllBytes(Path.Combine(d, "a"), data); File.WriteAllBytes(Path.Combine(d, "b"), data);
+        var fs = new DelayedCloudMetadataFs(OperatingSystem.IsWindows() ? new WindowsFileSystem() : new PortableFileSystem())
+            { Mutate = Path.Combine(d, "a") };
+        var r = Scan(d, o => { o.IncludeOnlineOnlyFiles = true; o.ExactVerification = true; }, fs: fs);
+        Check(r.Groups.Count == 0 && r.HasUncheckedFiles && r.Counters.ChangedFiles >= 1, "old cloud hash authorized different bytes");
+        Check(File.ReadAllBytes(Path.Combine(d, "a"))[0] != data[0], "mutation did not occur");
+    });
+}
+else { skipped += 2; Console.WriteLine("  SKIP C1-C2 require physical file identity"); }
+
 IncrementalTests.Run(Test, root);
 RecoveryTests.Run(Test, root);
 if (OperatingSystem.IsWindows())
@@ -772,6 +797,64 @@ sealed class FakeFs : IFileSystem
     {
         var p = _inner.GetStorageProfile(path);
         return Kind is { } k ? p with { Kind = k, Description = k.ToString() } : p;
+    }
+}
+
+/// <summary>Real reads with a scripted late Cloud Files metadata update, without a network provider.</summary>
+sealed class DelayedCloudMetadataFs(IFileSystem inner) : IFileSystem
+{
+    private readonly Dictionary<string, (int Opens, int Epoch, FileIdentity Initial)> _versions = new();
+    public string? Mutate;
+    public string NormalizeRoot(string root) => inner.NormalizeRoot(root);
+    public FileStatus EnumerateDirectory(string dir, DirEntryHandler handler, CancellationToken ct, out string? error) =>
+        inner.EnumerateDirectory(dir, (ReadOnlySpan<char> name, in EntryInfo entry) =>
+        {
+            var copy = entry;
+            if (!entry.IsDirectory) { copy.Attributes |= FileAttr.RecallOnDataAccess; copy.ReparseTag = ReparseTags.Cloud; }
+            handler(name, copy);
+        }, ct, out error);
+    public FileStatus GetIdentity(string path, out FileIdentity id)
+    {
+        var status = inner.GetIdentity(path, out id);
+        lock (_versions)
+        {
+            if (!_versions.TryGetValue(path, out var version))
+                _versions[path] = version = (0, 0, id);
+            id.LastWriteTicks = version.Initial.LastWriteTicks; id.CreationTicks = version.Initial.CreationTicks;
+            id.ChangeTicks = version.Initial.ChangeTicks + version.Epoch;
+        }
+        return status;
+    }
+    public bool TryGetDirectoryIdentity(string path, out (ulong Vol, ulong Lo, ulong Hi) id) => inner.TryGetDirectoryIdentity(path, out id);
+    public StorageProfile GetStorageProfile(string path) => inner.GetStorageProfile(path);
+    public SafeFileHandle OpenRead(string path, bool sequential)
+    {
+        lock (_versions)
+        {
+            var version = _versions[path]; version.Opens++;
+            if (version.Opens == 2)
+            {
+                version.Epoch++;
+                if (path == Mutate)
+                {
+                    using var writer = File.Open(path, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete);
+                    int old = writer.ReadByte(); writer.Position = 0; writer.WriteByte((byte)(old ^ 255)); writer.Flush(true);
+                }
+            }
+            _versions[path] = version;
+        }
+        return inner.OpenRead(path, sequential);
+    }
+    public bool TryGetSnapshot(SafeFileHandle h, string path, out MetaSnapshot snapshot)
+    {
+        bool success = inner.TryGetSnapshot(h, path, out snapshot);
+        lock (_versions)
+        {
+            var version = _versions[path];
+            snapshot.LastWriteTicks = version.Initial.LastWriteTicks; snapshot.CreationTicks = version.Initial.CreationTicks;
+            snapshot.ChangeTicks = version.Initial.ChangeTicks + version.Epoch;
+        }
+        return success;
     }
 }
 

@@ -38,6 +38,7 @@ public struct FileRecord
     public const byte FlagHasIdentity = 1;
     public const byte FlagIdentityResolved = 2;
     public const byte FlagFullFromCache = 4;
+    public const byte FlagHydrationRechecked = 8;
 
     public readonly bool HasIdentity => (Flags & FlagHasIdentity) != 0;
 }

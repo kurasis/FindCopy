@@ -73,29 +73,32 @@ static class WindowsAcceptanceTests
         });
         test("W19 explicit online inclusion fetches actual Cloud Files content", () =>
         {
-            string d = Path.Combine(root, "cloud-download"); Directory.CreateDirectory(d);
-            using var cloud = new CloudFixture(d); cloud.Connect();
-            var fs = new WindowsFileSystem();
-            foreach (string path in Directory.GetFiles(d))
+            for (int iteration = 0; iteration < 8; iteration++)
             {
-                fs.GetIdentity(path, out var id);
-                Console.WriteLine($"CLOUD_BEFORE: {Path.GetFileName(path)} size={id.Size}; write={id.LastWriteTicks}; change={id.ChangeTicks}; creation={id.CreationTicks}");
+                string d = Path.Combine(root, "cloud-download-" + iteration); Directory.CreateDirectory(d);
+                using var cloud = new CloudFixture(d); cloud.Connect();
+                var fs = new WindowsFileSystem();
+                foreach (string path in Directory.GetFiles(d))
+                {
+                    fs.GetIdentity(path, out var id);
+                    Console.WriteLine($"CLOUD_BEFORE: {Path.GetFileName(path)} size={id.Size}; write={id.LastWriteTicks}; change={id.ChangeTicks}; creation={id.CreationTicks}");
+                }
+                var r = new ScanController().RunAsync(new ScanOptions { Roots = new[] { d }, IncludeOnlineOnlyFiles = true,
+                    ExactVerification = true }, default).GetAwaiter().GetResult();
+                Console.WriteLine($"CLOUD_DOWNLOAD: fetches={cloud.Fetches}; groups={r.Groups.Count}; unchecked={r.HasUncheckedFiles}; errors={r.Counters.ErrorFiles}; changed={r.Counters.ChangedFiles}; content={r.Counters.ContentBytesRead}; issues=" +
+                    string.Join(",", r.IssueCounts.Select(x => x.Key + "=" + x.Value)));
+                foreach (var issue in r.Issues) Console.WriteLine("CLOUD_ISSUE: " + issue);
+                foreach (string path in Directory.GetFiles(d))
+                {
+                    fs.GetIdentity(path, out var id);
+                    Console.WriteLine($"CLOUD_AFTER: {Path.GetFileName(path)} size={id.Size}; write={id.LastWriteTicks}; change={id.ChangeTicks}; creation={id.CreationTicks}");
+                }
+                Require(cloud.Fetches >= 2 && cloud.CallbackErrors.Count == 0 && !r.HasUncheckedFiles &&
+                    r.Groups.Count == 1 && r.Groups[0].Verification == VerificationState.ExactMatch,
+                    "provider-backed online scan: " + string.Join("; ", cloud.CallbackErrors));
+                Require(File.ReadAllBytes(Path.Combine(d, "online-a")).SequenceEqual(cloud.Data) &&
+                    File.ReadAllBytes(Path.Combine(d, "online-b")).SequenceEqual(cloud.Data), "hydrated bytes differ from provider payload");
             }
-            var r = new ScanController().RunAsync(new ScanOptions { Roots = new[] { d }, IncludeOnlineOnlyFiles = true,
-                ExactVerification = true }, default).GetAwaiter().GetResult();
-            Console.WriteLine($"CLOUD_DOWNLOAD: fetches={cloud.Fetches}; groups={r.Groups.Count}; unchecked={r.HasUncheckedFiles}; errors={r.Counters.ErrorFiles}; changed={r.Counters.ChangedFiles}; content={r.Counters.ContentBytesRead}; issues=" +
-                string.Join(",", r.IssueCounts.Select(x => x.Key + "=" + x.Value)));
-            foreach (var issue in r.Issues) Console.WriteLine("CLOUD_ISSUE: " + issue);
-            foreach (string path in Directory.GetFiles(d))
-            {
-                fs.GetIdentity(path, out var id);
-                Console.WriteLine($"CLOUD_AFTER: {Path.GetFileName(path)} size={id.Size}; write={id.LastWriteTicks}; change={id.ChangeTicks}; creation={id.CreationTicks}");
-            }
-            Require(cloud.Fetches >= 2 && cloud.CallbackErrors.Count == 0 && !r.HasUncheckedFiles &&
-                r.Groups.Count == 1 && r.Groups[0].Verification == VerificationState.ExactMatch,
-                "provider-backed online scan: " + string.Join("; ", cloud.CallbackErrors));
-            Require(File.ReadAllBytes(Path.Combine(d, "online-a")).SequenceEqual(cloud.Data) &&
-                File.ReadAllBytes(Path.Combine(d, "online-b")).SequenceEqual(cloud.Data), "hydrated bytes differ from provider payload");
         });
         test("W20 provider fetch failures are reported without false duplicate groups", () =>
         {

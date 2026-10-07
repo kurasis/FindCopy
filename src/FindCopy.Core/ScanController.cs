@@ -133,6 +133,15 @@ internal sealed class ScanRun
         Phase("Полный хеш BLAKE3");
         var candidates = small.Concat(large).ToList();
         var hashGroups = FullHashStage(candidates);
+        if (_opt.IncludeOnlineOnlyFiles)
+        {
+            // Provider metadata may arrive after a successful close-time check.
+            foreach (int rec in hashGroups.SelectMany(g => g).Distinct())
+                if (IsDownloadingCloudFile(rec) && CheckClosedCloudRead(rec) != FileStatus.Ok && !TryRehashHydratedVersion(rec))
+                    Fail(rec, FileStatus.ChangedDuringScan, "Версия облачного файла изменилась после хеширования");
+            hashGroups = hashGroups.Select(g => g.Where(i => _records[i].Status == FileStatus.Ok).ToArray())
+                .Where(g => g.Length >= 2).ToList();
+        }
         if (_opt.CompareAlternateStreams && hashGroups.Count > 0)
         {
             Phase("Сравнение альтернативных потоков NTFS");
@@ -154,7 +163,30 @@ internal sealed class ScanRun
         }
 
         // Validate live metadata even for cached hashes before publishing a result.
-        foreach (int rec in verified.SelectMany(g => g.Members).Distinct()) ValidateVersion(rec);
+        foreach (var group in verified)
+        {
+            foreach (int rec in group.Members)
+            {
+                if (IsDownloadingCloudFile(rec) && CheckClosedCloudRead(rec) != FileStatus.Ok &&
+                    (!_opt.CompareAlternateStreams || group.State == VerificationState.ExactMatch))
+                {
+                    if (!TryRehashHydratedVersion(rec))
+                        Fail(rec, FileStatus.ChangedDuringScan, "Версия облачного файла изменилась после проверки");
+                    else if (group.State == VerificationState.ExactMatch)
+                    {
+                        int peer = group.Members.FirstOrDefault(i => i != rec && _records[i].Status == FileStatus.Ok, -1);
+                        if (peer >= 0)
+                        {
+                            int bufferSize = Math.Max(_t.StreamBufferSize, 4 << 20);
+                            var comparison = CompareFiles(rec, peer, new byte[bufferSize], new byte[bufferSize], out int failed, out string? message);
+                            if (comparison == CompareResult.Failed) Fail(failed, _records[failed].Status, message);
+                            else if (comparison != CompareResult.Equal) Fail(rec, FileStatus.ChangedDuringScan, "Облачные файлы изменились после сравнения");
+                        }
+                    }
+                }
+                ValidateVersion(rec);
+            }
+        }
         verified = verified.Select(g => (Members: g.Members.Where(i => _records[i].Status == FileStatus.Ok).ToArray(), g.State))
             .Where(g => g.Members.Length >= 2).ToList();
         Interlocked.Exchange(ref _c.HashMatchGroups, verified.Count);
@@ -544,6 +576,25 @@ internal sealed class ScanRun
             ? FileStatus.Ok : FileStatus.ChangedDuringScan;
     }
 
+    private bool TryRehashHydratedVersion(int rec)
+    {
+        ref var r = ref _records[rec];
+        if (r.Status != FileStatus.Ok || r.FullHashSlot < 0 ||
+            (r.Flags & FileRecord.FlagHydrationRechecked) != 0 || !TryRefreshHydratedVersion(rec)) return false;
+        r.Flags |= FileRecord.FlagHydrationRechecked;
+        Span<byte> previousHash = stackalloc byte[32];
+        _fullHashes.AsSpan(r.FullHashSlot * 32, 32).CopyTo(previousHash);
+        var buffer = new byte[_t.StreamBufferSize];
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+            var status = HashOnce(rec, PathOf(rec), buffer, out _, out _, reportProgress: false);
+            if (status == FileStatus.Ok)
+                return previousHash.SequenceEqual(_fullHashes.AsSpan(r.FullHashSlot * 32, 32));
+            if (status != FileStatus.ChangedDuringScan || attempt == 1 || !TryRefreshHydratedVersion(rec)) break;
+        }
+        return false;
+    }
+
     private bool ValidateVersion(int rec)
     {
         if (_records[rec].Status != FileStatus.Ok) return false;
@@ -711,7 +762,7 @@ internal sealed class ScanRun
         return (BitConverter.ToUInt64(s), BitConverter.ToUInt64(s[8..]), BitConverter.ToUInt64(s[16..]), BitConverter.ToUInt64(s[24..]));
     }
 
-    private FileStatus HashOnce(int rec, string path, byte[] buf, out string? message, out MetaSnapshot snapshot)
+    private FileStatus HashOnce(int rec, string path, byte[] buf, out string? message, out MetaSnapshot snapshot, bool reportProgress = true)
     {
         message = null;
         snapshot = default;
@@ -737,14 +788,14 @@ internal sealed class ScanRun
                 off += n;
                 progressed += n;
                 Interlocked.Add(ref _c.FullHashBytesRead, n);
-                Interlocked.Add(ref _c.StageDone, n);
+                if (reportProgress) Interlocked.Add(ref _c.StageDone, n);
                 _opt.AfterFullHashBlock?.Invoke(path, block++);
             }
 
             if (!_fs.TryGetSnapshot(h, path, out var after) || !after.Equals(before))
             {
                 message = "Файл изменился во время хеширования";
-                Interlocked.Add(ref _c.StageDone, -progressed);
+                if (reportProgress) Interlocked.Add(ref _c.StageDone, -progressed);
                 return FileStatus.ChangedDuringScan;
             }
 
@@ -755,7 +806,7 @@ internal sealed class ScanRun
                 if (closed != FileStatus.Ok)
                 {
                     message = "Версия облачного файла изменилась после чтения";
-                    Interlocked.Add(ref _c.StageDone, -progressed);
+                    if (reportProgress) Interlocked.Add(ref _c.StageDone, -progressed);
                     return closed;
                 }
             }
@@ -1093,6 +1144,10 @@ internal sealed class ScanRun
 
             bool snapA = _fs.TryGetSnapshot(ha, pa, out var sa0);
             bool snapB = _fs.TryGetSnapshot(hb, pb, out var sb0);
+            if (snapA && !MatchesVersion(_records[a], sa0) && IsDownloadingCloudFile(a))
+                return RecompareHydratedFiles(a, b, a, ha, hb, ba, bb, 0, out failedRec, out message);
+            if (snapB && !MatchesVersion(_records[b], sb0) && IsDownloadingCloudFile(b))
+                return RecompareHydratedFiles(a, b, b, ha, hb, ba, bb, 0, out failedRec, out message);
             if (!snapA || !MatchesVersion(_records[a], sa0)) { failedRec = a; _records[a].Status = snapA ? FileStatus.ChangedDuringScan : FileStatus.Unsupported; message = "Версия файла для сравнения изменилась или недоступна"; return CompareResult.Failed; }
             if (!snapB || !MatchesVersion(_records[b], sb0)) { failedRec = b; _records[b].Status = snapB ? FileStatus.ChangedDuringScan : FileStatus.Unsupported; message = "Версия файла для сравнения изменилась или недоступна"; return CompareResult.Failed; }
             long off = 0;
@@ -1163,8 +1218,16 @@ internal sealed class ScanRun
                     { failedRec = b; _records[b].Status = FileStatus.ChangedDuringScan; return CompareResult.Failed; }
                 }
             }
-            if (snapA && (!_fs.TryGetSnapshot(ha, pa, out var sa1) || !sa1.Equals(sa0))) { failedRec = a; _records[a].Status = FileStatus.ChangedDuringScan; message = "Файл изменился во время сравнения"; return CompareResult.Failed; }
-            if (snapB && (!_fs.TryGetSnapshot(hb, pb, out var sb1) || !sb1.Equals(sb0))) { failedRec = b; _records[b].Status = FileStatus.ChangedDuringScan; message = "Файл изменился во время сравнения"; return CompareResult.Failed; }
+            if (snapA && (!_fs.TryGetSnapshot(ha, pa, out var sa1) || !sa1.Equals(sa0)))
+            {
+                if (IsDownloadingCloudFile(a)) return RecompareHydratedFiles(a, b, a, ha, hb, ba, bb, off, out failedRec, out message);
+                failedRec = a; _records[a].Status = FileStatus.ChangedDuringScan; message = "Файл изменился во время сравнения"; return CompareResult.Failed;
+            }
+            if (snapB && (!_fs.TryGetSnapshot(hb, pb, out var sb1) || !sb1.Equals(sb0)))
+            {
+                if (IsDownloadingCloudFile(b)) return RecompareHydratedFiles(a, b, b, ha, hb, ba, bb, off, out failedRec, out message);
+                failedRec = b; _records[b].Status = FileStatus.ChangedDuringScan; message = "Файл изменился во время сравнения"; return CompareResult.Failed;
+            }
             return CompareResult.Equal;
         }
         catch (OperationCanceledException) { throw; }
@@ -1180,6 +1243,22 @@ internal sealed class ScanRun
             ha?.Dispose();
             hb?.Dispose();
         }
+    }
+
+    private CompareResult RecompareHydratedFiles(int a, int b, int changed,
+        Microsoft.Win32.SafeHandles.SafeFileHandle ha, Microsoft.Win32.SafeHandles.SafeFileHandle hb,
+        byte[] ba, byte[] bb, long progressed, out int failedRec, out string? message)
+    {
+        ha.Dispose(); hb.Dispose();
+        if (TryRehashHydratedVersion(changed))
+        {
+            Interlocked.Add(ref _c.StageDone, -progressed);
+            return CompareFiles(a, b, ba, bb, out failedRec, out message);
+        }
+        failedRec = changed;
+        _records[changed].Status = FileStatus.ChangedDuringScan;
+        message = "Не удалось подтвердить новую версию облачного файла";
+        return CompareResult.Failed;
     }
 
     private static int ReadFull(Microsoft.Win32.SafeHandles.SafeFileHandle h, Span<byte> buf, long off)
