@@ -52,9 +52,11 @@ internal static class PublishedAppAcceptance
             Until(() => Element("SummaryText").Current.Name.Contains("Удалено файлов: 1"));
             if (Directory.EnumerateFiles(root).Count() != 1 || Element("SummaryText").Current.Name.Contains("замечаниями"))
                 throw new Exception("Published recycling did not complete cleanly and preserve one copy");
+            // The summary updates before the modal result dialog closes and controls are restored.
+            Until(() => Element("SearchButton").Current.IsEnabled);
             ((WindowPattern)window!.GetCurrentPattern(WindowPattern.Pattern)).Close();
-            if (!process.WaitForExit(10_000) || process.ExitCode != 0)
-                throw new Exception("Published application did not close cleanly");
+            if (!process.WaitForExit(10_000)) throw new Exception("Published application remained running after closing");
+            if (process.ExitCode != 0) throw new Exception("Published application exited with code " + process.ExitCode);
         }
         finally
         {
