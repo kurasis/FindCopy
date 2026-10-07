@@ -16,6 +16,7 @@ internal static class PublishedAppAcceptance
         using var done = new CancellationTokenSource();
         var dialogs = new Thread(() =>
         {
+            var reported = new HashSet<IntPtr>();
             while (!done.IsCancellationRequested)
             {
                 EnumWindows((handle, _) =>
@@ -24,8 +25,12 @@ internal static class PublishedAppAcceptance
                     if (pid != processId) return true;
                     var title = new StringBuilder(256); GetWindowTextW(handle, title, title.Capacity);
                     // Posting avoids blocking the responder while a second modal dialog opens.
-                    if (title.ToString() == "Подтвердите удаление") PostMessageW(handle, 0x0111, new IntPtr(6), IntPtr.Zero);
-                    if (title.ToString() == "Удаление") PostMessageW(handle, 0x0111, new IntPtr(1), IntPtr.Zero);
+                    int button = title.ToString() switch { "Подтвердите удаление" => 6, "Удаление" => 1, _ => 0 };
+                    if (button != 0)
+                    {
+                        bool posted = PostMessageW(handle, 0x0111, new IntPtr(button), GetDlgItem(handle, button));
+                        if (reported.Add(handle)) Console.WriteLine($"PUBLISHED_DIALOG: {title}, posted={posted}");
+                    }
                     return true;
                 }, IntPtr.Zero);
                 Thread.Sleep(20);
@@ -61,6 +66,27 @@ internal static class PublishedAppAcceptance
             if (!process.WaitForExit(10_000)) throw new Exception("Published application remained running after closing");
             if (process.ExitCode != 0) throw new Exception("Published application exited with code " + process.ExitCode);
         }
+        catch
+        {
+            Console.WriteLine($"PUBLISHED_FAILURE: exited={process.HasExited}, fixtureFiles={Directory.EnumerateFiles(root).Count()}");
+            EnumWindows((handle, _) =>
+            {
+                GetWindowThreadProcessId(handle, out uint pid);
+                if (pid == processId)
+                {
+                    var text = new StringBuilder(2048); GetWindowTextW(handle, text, text.Capacity);
+                    Console.WriteLine($"PUBLISHED_WINDOW: {text}, enabled={IsWindowEnabled(handle)}");
+                    EnumChildWindows(handle, (child, _) =>
+                    {
+                        var caption = new StringBuilder(2048); GetWindowTextW(child, caption, caption.Capacity);
+                        if (caption.Length > 0) Console.WriteLine("PUBLISHED_CHILD: " + caption);
+                        return true;
+                    }, IntPtr.Zero);
+                }
+                return true;
+            }, IntPtr.Zero);
+            throw;
+        }
         finally
         {
             done.Cancel(); dialogs.Join(1000);
@@ -83,6 +109,9 @@ internal static class PublishedAppAcceptance
     private sealed class ControlNotReadyException(string id) : Exception("Missing published control: " + id);
     private delegate bool WindowCallback(IntPtr window, IntPtr parameter);
     [DllImport("user32.dll")] private static extern bool EnumWindows(WindowCallback callback, IntPtr parameter);
+    [DllImport("user32.dll")] private static extern bool EnumChildWindows(IntPtr window, WindowCallback callback, IntPtr parameter);
+    [DllImport("user32.dll")] private static extern bool IsWindowEnabled(IntPtr window);
+    [DllImport("user32.dll")] private static extern IntPtr GetDlgItem(IntPtr window, int id);
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowTextW(IntPtr window, StringBuilder text, int length);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern bool PostMessageW(IntPtr window, uint message, IntPtr wparam, IntPtr lparam);
