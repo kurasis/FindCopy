@@ -526,8 +526,12 @@ public partial class MainWindow : Window
         ShowNotification(summary, "Удаление", failed.Count > 0 || notes.Count > 0);
     }
 
-    protected virtual void ShowNotification(string message, string title, bool warning) =>
-        MessageBox.Show(this, message, title, MessageBoxButton.OK, warning ? MessageBoxImage.Warning : MessageBoxImage.Information);
+    internal Action<string, string, bool>? NotificationSink { get; set; }
+    private void ShowNotification(string message, string title, bool warning)
+    {
+        if (NotificationSink != null) NotificationSink(message, title, warning);
+        else MessageBox.Show(this, message, title, MessageBoxButton.OK, warning ? MessageBoxImage.Warning : MessageBoxImage.Information);
+    }
 
     // ------------------------------------------------------------ file actions
 

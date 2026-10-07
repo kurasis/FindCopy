@@ -15,13 +15,15 @@ internal static class Program
 {
     private static int _passed, _failed;
     private static string _artifacts = "";
+    private static string _notification = "";
+    private static bool _warning;
 
     [STAThread]
     private static int Main(string[] args)
     {
         _artifacts = Path.GetFullPath(args.Length == 0 ? "ui-test-artifacts" : args[0]);
         Directory.CreateDirectory(_artifacts);
-        var app = new TestApplication(); app.InitializeComponent();
+        var app = new App { CreateStartupWindow = false }; app.InitializeComponent();
         app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
         app.Dispatcher.InvokeAsync(async () =>
         {
@@ -36,7 +38,8 @@ internal static class Program
     {
         string root = Path.Combine(Path.GetTempPath(), "findcopy-ui-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
-        var window = new ProbeWindow(); Application.Current.MainWindow = window; window.Show();
+        var window = new MainWindow { NotificationSink = (message, _, warning) => { _notification = message; _warning = warning; } };
+        Application.Current.MainWindow = window; window.Show();
         try
         {
             string pair = Path.Combine(root, "pair"); Directory.CreateDirectory(pair);
@@ -81,8 +84,8 @@ internal static class Program
                 string recovery = Path.Combine(root, "private-recovery", "b");
                 Invoke(window, "ApplyDeletion", new List<DeleteOutcome> { new(path, true, "Проверенный файл сохранён в " + recovery, 0) });
                 var issues = (IEnumerable<IssueVM>)Control<DataGrid>(window, "IssuesGrid").ItemsSource;
-                Require(issues.Any(x => x.Message?.Contains(recovery) == true) && window.Warning &&
-                    window.Notification.Contains("восстановления") && Control<TextBlock>(window, "SummaryText").Text.Contains("замечаниями"), "recovery warning hidden");
+                Require(issues.Any(x => x.Message?.Contains(recovery) == true) && _warning &&
+                    _notification.Contains("восстановления") && Control<TextBlock>(window, "SummaryText").Text.Contains("замечаниями"), "recovery warning hidden");
                 Screenshot(window, "recovery-warning.png");
                 return Task.CompletedTask;
             });
@@ -91,7 +94,7 @@ internal static class Program
                 await Search(window, pair); Click(window, "SelectExtrasButton");
                 string path = Groups(window).Single().Files.Single(f => f.IsChecked).Path;
                 Invoke(window, "ApplyDeletion", new List<DeleteOutcome> { new(path, false, "Sharing violation", 0) });
-                Require(Groups(window).Single().SelectedCount == 1 && Result(window).Groups.Single().Files.Count == 2 && window.Warning, "failed deletion projection");
+                Require(Groups(window).Single().SelectedCount == 1 && Result(window).Groups.Single().Files.Count == 2 && _warning, "failed deletion projection");
             });
             await Test("UI7 native policy exclusions qualify no-duplicate wording", async () =>
             {
@@ -153,7 +156,7 @@ internal static class Program
         finally { window.Close(); Directory.Delete(root, true); }
     }
 
-    private static async Task Search(ProbeWindow window, string root)
+    private static async Task Search(MainWindow window, string root)
     {
         Control<TextBox>(window, "FolderBox").Text = root;
         Control<CheckBox>(window, "CacheBox").IsChecked = false;
@@ -187,16 +190,6 @@ internal static class Program
         var bitmap = new RenderTargetBitmap((int)window.ActualWidth, (int)window.ActualHeight, 96, 96, PixelFormats.Pbgra32);
         bitmap.Render(window); var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
         using var output = File.Create(Path.Combine(_artifacts, name)); encoder.Save(output);
-    }
-    private sealed class ProbeWindow : MainWindow
-    {
-        public string Notification = ""; public bool Warning;
-        protected override void ShowNotification(string message, string title, bool warning) { Notification = message; Warning = warning; }
-    }
-    private sealed class TestApplication : App
-    {
-        // The runner creates its own window and must surface dispatcher failures.
-        protected override void OnStartup(StartupEventArgs e) { }
     }
     private delegate bool EnumWindow(IntPtr window, IntPtr parameter);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr FindWindowW(string className, string title);

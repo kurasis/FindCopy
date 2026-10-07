@@ -5,11 +5,12 @@ namespace FindCopy.App;
 
 public partial class App : Application
 {
+    internal bool CreateStartupWindow { get; set; } = true;
     protected override void OnStartup(StartupEventArgs e)
     {
         DispatcherUnhandledException += OnUnhandled;
         base.OnStartup(e);
-        new MainWindow().Show();
+        if (CreateStartupWindow) new MainWindow().Show();
     }
 
     private static void OnUnhandled(object sender, DispatcherUnhandledExceptionEventArgs e)
