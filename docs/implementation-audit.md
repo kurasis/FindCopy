@@ -45,7 +45,7 @@ Additional reviewed paths:
   with complete name deduplication, including hash-collision handling.
 - Follow mode refuses directories with unavailable physical identity, so a
   failed identity lookup cannot disable cycle protection.
-- Cache schema 4 stores creation time and transactional inventories. Corruption recovery is restricted to
+- Cache schema 5 stores creation time and transactional inventories. Corruption recovery is restricted to
   SQLite corruption/not-a-database errors. Malformed or incomplete USN record
   intervals fail safely to cache invalidation.
 - Empty-file results distinguish physical objects and their aliases without
@@ -68,7 +68,7 @@ and does not provide Windows mandatory share-mode guarantees.
 | Windows WPF interaction acceptance | 11 passed, 0 failed |
 | Ordinary-user Windows WPF + published EXE | Non-admin token; 12 passed; actual scan/recycle/keeper preservation and clean exit |
 | Windows PowerShell hardware wrapper | 18 configurations passed; paths with spaces |
-| Incremental inventory regressions | 15 passing cases included in baseline |
+| Incremental inventory regressions | 18 passing cases included in baseline |
 | Million physical sparse A files | 1,000,000 files; 0 content bytes; 0 groups; 2.421 s; 315.37 MiB sampled working set |
 | 100,000 physical sparse B files | 6,553,600,000 bytes = 64 KiB/file; 0 groups; 1.748 s; 86.63 MiB |
 | B fingerprint-cache warm run | 0 content bytes; 100% hits; 0.957 s; 117.00 MiB |
@@ -92,10 +92,11 @@ CSV, is in [extended acceptance](validation/extended-acceptance.md). Inventory
 replay avoids native enumeration but is slower than a fresh OS-cached scan on
 this host; this is a measured limitation, not a guaranteed speedup.
 
-The 15 inventory regressions cover unchanged reuse, changed parents,
+The 18 inventory regressions cover unchanged reuse, changed parents,
 addition/deletion, aliases, subtree rename, journal reset/gap/unavailability,
 incomplete IDs, interrupted enumeration/cancellation, corruption,
-recursion switches, competing generations, and atomic USN parsing.
+recursion switches, competing generations, atomic USN parsing, unchanged-blob
+write avoidance, checksummed malformed tails, and allocation-free Unicode replay.
 [Inventory design](incremental-inventory.md) explains fallback and transaction rules.
 
 CSV evidence: [scale acceptance](validation/linux-scale-acceptance.csv) and

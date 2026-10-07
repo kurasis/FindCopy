@@ -121,6 +121,60 @@ static class IncrementalTests
                 Require(cache.GetInventoryState(f.Root)!.Generation == generation, "newer snapshot was overwritten");
             f.SameAsFresh(f.Scan());
         });
+        test("I16 unchanged inventory advances checkpoint without rewriting blobs", () =>
+        {
+            using var f = new Fixture(parent); f.Seed(); long old = f.Checkpoint();
+            using (var db = new SqliteConnection("Data Source=" + f.Cache + ";Pooling=False"))
+            {
+                db.Open(); using var c = db.CreateCommand();
+                c.CommandText = @"CREATE TRIGGER no_blob_update BEFORE UPDATE ON inventory_dirs BEGIN SELECT RAISE(ABORT,'unexpected blob rewrite'); END;
+                    CREATE TRIGGER no_blob_insert BEFORE INSERT ON inventory_dirs BEGIN SELECT RAISE(ABORT,'unexpected blob insert'); END;
+                    CREATE TRIGGER no_blob_delete BEFORE DELETE ON inventory_dirs BEGIN SELECT RAISE(ABORT,'unexpected blob delete'); END;";
+                c.ExecuteNonQuery();
+            }
+            f.Fs.Next++;
+            var r = f.Scan();
+            Require(f.Checkpoint() > old && r.Counters.CacheNote == null && f.Fs.Enumerated.Count == 0,
+                "warm scan must advance generation without writing listing blobs");
+            f.SameAsFresh(r);
+        });
+        test("I17 checksummed malformed listings fall back without partial replay", () =>
+        {
+            using var f = new Fixture(parent); f.Seed();
+            using (var db = new SqliteConnection("Data Source=" + f.Cache + ";Pooling=False"))
+            {
+                db.Open(); using var c = db.CreateCommand();
+                c.CommandText = "SELECT path,entries FROM inventory_dirs WHERE path=$p;";
+                string p = Path.Combine(f.Root, "x");
+                c.Parameters.AddWithValue("$p", OperatingSystem.IsWindows() ? p.ToUpperInvariant() : p);
+                byte[] bytes;
+                using (var row = c.ExecuteReader()) { Require(row.Read(), "cached leaf missing"); bytes = (byte[])row.GetValue(1); }
+                // Damage the second record, retaining a valid checksum and a valid first record.
+                int second = 8 + 68 + 2 * BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(8));
+                BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(second), ushort.MaxValue);
+                BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(bytes.Length - 8),
+                    System.IO.Hashing.XxHash3.HashToUInt64(bytes.AsSpan(0, bytes.Length - 8)));
+                c.CommandText = "UPDATE inventory_dirs SET entries=$e WHERE path=$p;";
+                c.Parameters.AddWithValue("$e", bytes); c.ExecuteNonQuery();
+            }
+            var r = f.Scan();
+            Require(f.Fs.Enumerated.Count == 1 && r.Counters.FilesDiscovered == 4, "malformed tail duplicated emitted entries");
+            f.SameAsFresh(r);
+        });
+        test("I18 inventory span codec preserves Unicode and avoids per-entry allocations", () =>
+        {
+            using var listing = new DirectoryListing();
+            var e = new EntryInfo { HasIdentity = true, VolumeSerial = 1, FileIdLow = 2, Size = 1, LastWriteTicks = 1 };
+            string name = "данные-🗂️-" + new string('x', 600);
+            for (int i = 0; i < 1000; i++) listing.Append(name, e);
+            byte[] bytes = listing.Finish()!; var changed = new HashSet<(ulong, ulong)>();
+            Require(DirectoryListing.IsReusable(bytes, changed, default, out _), "valid Unicode listing rejected");
+            DirectoryListing.Replay(bytes, (ReadOnlySpan<char> _, in EntryInfo _) => { }, default);
+            long before = GC.GetAllocatedBytesForCurrentThread(); int seen = 0;
+            Require(DirectoryListing.IsReusable(bytes, changed, default, out int count) && count == 1000, "record count");
+            DirectoryListing.Replay(bytes, (ReadOnlySpan<char> n, in EntryInfo _) => { Require(n.SequenceEqual(name), "UTF-16 name changed"); seen++; }, default);
+            Require(seen == 1000 && GC.GetAllocatedBytesForCurrentThread() - before < 4096, "codec allocated per-entry names");
+        });
         test("I15 USN packets validate parent identities, bounds, and versions atomically", () =>
         {
             byte[] record = new byte[64]; BinaryPrimitives.WriteUInt32LittleEndian(record, 64);

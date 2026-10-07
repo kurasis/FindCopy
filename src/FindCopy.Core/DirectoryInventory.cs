@@ -83,7 +83,7 @@ internal sealed class DirectoryInventory
                 if (bytes != null && DirectoryListing.IsReusable(bytes, root.Changed, ct, out int count))
                 {
                     // Staging precedes replay so a database failure cannot duplicate emitted entries.
-                    _cache.StageInventoryDirectory(root.Path, path, id, bytes);
+                    _cache.StageInventoryDirectory(root.Path, path, id, null);
                     reused = bytes;
                     reusedCount = count;
                 }
@@ -161,7 +161,7 @@ internal sealed class DirectoryListing : IDisposable
         if (_stream.Length + 80 + name.Length * 2 > Limit || name.Length > ushort.MaxValue)
         { _overflow = true; return; }
         _writer.Write((ushort)name.Length);
-        foreach (char ch in name) _writer.Write((ushort)ch);
+        _writer.Write(System.Runtime.InteropServices.MemoryMarshal.AsBytes(name));
         _writer.Write(e.IsDirectory); _writer.Write(e.Attributes); _writer.Write(e.ReparseTag);
         _writer.Write(e.Size); _writer.Write(e.LastWriteTicks); _writer.Write(e.HasIdentity);
         _writer.Write(e.VolumeSerial); _writer.Write(e.FileIdLow); _writer.Write(e.FileIdHigh);
@@ -179,60 +179,71 @@ internal sealed class DirectoryListing : IDisposable
         return _stream.ToArray();
     }
 
-    private static string ReadEntry(BinaryReader reader, out EntryInfo e)
+    private static ReadOnlySpan<char> ReadEntry(ReadOnlySpan<byte> bytes, ref int offset, out EntryInfo e)
     {
-        int length = reader.ReadUInt16();
+        int length = System.Buffers.Binary.BinaryPrimitives.ReadUInt16LittleEndian(bytes[offset..]);
+        offset += 2;
         if (length == 0) throw new InvalidDataException("Empty inventory name");
-        Span<char> name = length <= 512 ? stackalloc char[length] : new char[length];
-        for (int i = 0; i < length; i++) name[i] = (char)reader.ReadUInt16();
+        var name = System.Runtime.InteropServices.MemoryMarshal.Cast<byte, char>(bytes.Slice(offset, length * 2));
+        offset += length * 2;
         if (name.SequenceEqual(".") || name.SequenceEqual("..") || name.Contains('/') || name.Contains('\\') || name.Contains('\0'))
             throw new InvalidDataException("Invalid inventory name");
+        var m = bytes.Slice(offset, 66);
+        offset += 66;
+        if (m[0] > 1 || m[25] > 1) throw new InvalidDataException("Invalid inventory flags");
         e = new EntryInfo
         {
-            IsDirectory = reader.ReadBoolean(), Attributes = reader.ReadUInt32(), ReparseTag = reader.ReadUInt32(),
-            Size = reader.ReadInt64(), LastWriteTicks = reader.ReadInt64(), HasIdentity = reader.ReadBoolean(),
-            VolumeSerial = reader.ReadUInt64(), FileIdLow = reader.ReadUInt64(), FileIdHigh = reader.ReadUInt64(),
-            AllocatedSize = reader.ReadInt64(), ChangeTicks = reader.ReadInt64(),
+            IsDirectory = m[0] != 0,
+            Attributes = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(m[1..]),
+            ReparseTag = System.Buffers.Binary.BinaryPrimitives.ReadUInt32LittleEndian(m[5..]),
+            Size = System.Buffers.Binary.BinaryPrimitives.ReadInt64LittleEndian(m[9..]),
+            LastWriteTicks = System.Buffers.Binary.BinaryPrimitives.ReadInt64LittleEndian(m[17..]),
+            HasIdentity = m[25] != 0,
+            VolumeSerial = System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(m[26..]),
+            FileIdLow = System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(m[34..]),
+            FileIdHigh = System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(m[42..]),
+            AllocatedSize = System.Buffers.Binary.BinaryPrimitives.ReadInt64LittleEndian(m[50..]),
+            ChangeTicks = System.Buffers.Binary.BinaryPrimitives.ReadInt64LittleEndian(m[58..]),
         };
         if (e.Size < 0 || e.LastWriteTicks < 0) throw new InvalidDataException("Invalid inventory metadata");
-        return new string(name);
+        return name;
     }
 
     public static bool IsReusable(byte[] bytes, HashSet<(ulong, ulong)> changed, CancellationToken ct, out int count)
     {
         count = 0;
-        if (bytes.Length > Limit || bytes.Length < 16 ||
+        if (!BitConverter.IsLittleEndian || bytes.Length > Limit || bytes.Length < 16 ||
             System.IO.Hashing.XxHash3.HashToUInt64(bytes.AsSpan(0, bytes.Length - 8)) !=
             System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(bytes.AsSpan(bytes.Length - 8))) return false;
         try
         {
-            using var stream = new MemoryStream(bytes, 0, bytes.Length - 8, false);
-            using var reader = new BinaryReader(stream);
-            if (reader.ReadInt32() != Version) return false;
-            count = reader.ReadInt32();
+            var payload = bytes.AsSpan(0, bytes.Length - 8);
+            if (System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(payload) != Version) return false;
+            count = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(payload[4..]);
             if (count < 0 || count > bytes.Length / 68) return false;
+            int offset = 8;
             for (int i = 0; i < count; i++)
             {
                 ct.ThrowIfCancellationRequested();
-                ReadEntry(reader, out var e);
+                ReadEntry(payload, ref offset, out var e);
                 // Every alias is checked: a write may produce a journal record for only one parent.
                 if (!e.IsDirectory && (!e.HasIdentity || e.VolumeSerial == 0 ||
                     (e.FileIdLow == 0 && e.FileIdHigh == 0) || changed.Contains((e.FileIdLow, e.FileIdHigh)))) return false;
             }
-            return stream.Position == stream.Length;
+            return offset == payload.Length;
         }
         catch (Exception ex) when (ex is IOException or ArgumentException or OverflowException) { return false; }
     }
 
     public static void Replay(byte[] bytes, DirEntryHandler handler, CancellationToken ct)
     {
-        using var stream = new MemoryStream(bytes, false);
-        using var reader = new BinaryReader(stream);
-        reader.ReadInt32(); int count = reader.ReadInt32();
+        var payload = bytes.AsSpan(0, bytes.Length - 8);
+        int count = System.Buffers.Binary.BinaryPrimitives.ReadInt32LittleEndian(payload[4..]);
+        int offset = 8;
         for (int i = 0; i < count; i++)
         {
             ct.ThrowIfCancellationRequested();
-            string name = ReadEntry(reader, out var info);
+            var name = ReadEntry(payload, ref offset, out var info);
             handler(name, info);
         }
     }

@@ -32,7 +32,7 @@ public sealed class CacheEntry
 /// </summary>
 public sealed partial class ScanCache : IDisposable
 {
-    public const int SchemaVersion = 4;
+    public const int SchemaVersion = 5;
     public const int HashAlgorithmVersion = 1;      // 1 = XXH3_64 quick, BLAKE3-256 full
     private const int PruneAfterDays = 180;
 
@@ -308,6 +308,8 @@ public sealed partial class ScanCache : IDisposable
     {
         _getById?.Dispose();
         _getByPath?.Dispose();
+        _inventoryGet?.Dispose();
+        _inventoryStage?.Dispose();
         _db.Dispose();
     }
 

@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - 'tools/FindCopy.Bench/ExtendedAcceptance.cs'
+      - 'src/FindCopy.Core/DirectoryInventory.cs'
+      - 'src/FindCopy.Core/ScanCache*.cs'
+      - 'tests/FindCopy.Tests/IncrementalTests.cs'
       - '.github/workflows/extended-acceptance.yml'
 permissions:
   contents: read

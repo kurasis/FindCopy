@@ -71,7 +71,7 @@ The advanced cloud option asks for consent to downloads and local disk usage.
 
 Settings: `%LOCALAPPDATA%\FindCopy\settings.json`.
 Cache: `%LOCALAPPDATA%\FindCopy\cache.db`, which can be disabled or cleared.
-Schema 4 invalidates older schemas and stores transactional directory inventories.
+Schema 5 invalidates older schemas and stores transactional directory inventories.
 Ordinary scans do not require elevation; journal availability varies by account
 and filesystem, and unavailable journals never prevent ordinary scanning.
 
