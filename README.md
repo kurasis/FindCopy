@@ -15,6 +15,13 @@ is historical evidence.
 
 ## Build and test
 
+Download the self-contained x64 or ARM64 executable from
+[GitHub Releases](https://github.com/kurasis/FindCopy/releases). No separate
+.NET installation is required. Releases include SHA-256 checksums.
+The manual **Publish FindCopy release** workflow publishes artifacts from a
+successful **Validate FindCopy** main run, checks the application version and
+executable architectures, and refuses to overwrite a published release.
+
 Use .NET SDK 8.0.425, pinned by `global.json`. The desktop application runs
 on Windows; Linux can cross-build it and run portable engine checks.
 

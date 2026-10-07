@@ -1,0 +1,103 @@
+name: Publish FindCopy release
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag matching the application version (for example v1.0.0)
+        required: true
+        type: string
+      validation_run:
+        description: Successful Validate FindCopy run from main
+        required: true
+        type: string
+permissions:
+  actions: read
+  contents: write
+concurrency:
+  group: findcopy-release-${{ inputs.tag }}
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ inputs.tag }}
+      VALIDATION_RUN: ${{ inputs.validation_run }}
+    steps:
+      - name: Require successful main validation and matching version
+        id: source
+        run: |
+          python3 - <<'PY'
+          import base64, json, os, re, subprocess, xml.etree.ElementTree as ET
+          def api(path):
+              return json.loads(subprocess.check_output(['gh', 'api', path], text=True))
+          repo = os.environ['GH_REPO']
+          tag = os.environ['RELEASE_TAG']
+          run_id = os.environ['VALIDATION_RUN']
+          assert re.fullmatch(r'v\d+\.\d+\.\d+', tag), 'Use a stable version tag'
+          assert run_id.isdigit(), 'Validation run must be numeric'
+          run = api(f'repos/{repo}/actions/runs/{run_id}')
+          assert run['status'] == 'completed' and run['conclusion'] == 'success'
+          assert run['event'] == 'push' and run['head_branch'] == 'main'
+          assert run['repository']['full_name'] == repo and run['head_repository']['full_name'] == repo
+          assert run['path'] == '.github/workflows/validate.yml'
+          sha = run['head_sha']
+          assert re.fullmatch(r'[0-9a-f]{40}', sha)
+          project = api(f'repos/{repo}/contents/src/FindCopy.App/FindCopy.App.csproj?ref={sha}')
+          version = ET.fromstring(base64.b64decode(project['content'])).findtext('./PropertyGroup/Version')
+          assert tag == 'v' + version, 'Release tag must match the validated application version'
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write(f'sha={sha}\n')
+          print(f'Publishing {tag} from {sha}; validation attempt {run["run_attempt"]}')
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: FindCopy-win-x64
+          path: downloaded/x64
+          run-id: ${{ inputs.validation_run }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: FindCopy-win-arm64
+          path: downloaded/arm64
+          run-id: ${{ inputs.validation_run }}
+          github-token: ${{ github.token }}
+      - name: Check executable architectures and prepare release assets
+        run: |
+          python3 - <<'PY'
+          import hashlib, pathlib, shutil, struct
+          output = pathlib.Path('release-assets')
+          output.mkdir()
+          checksums = []
+          for arch, machine in [('x64', 0x8664), ('arm64', 0xaa64)]:
+              source = pathlib.Path('downloaded') / arch / 'FindCopy.exe'
+              data = source.read_bytes()
+              assert data[:2] == b'MZ'
+              pe = struct.unpack_from('<I', data, 0x3c)[0]
+              assert data[pe:pe + 4] == b'PE\0\0'
+              assert struct.unpack_from('<H', data, pe + 4)[0] == machine
+              name = f'FindCopy-win-{arch}.exe'
+              shutil.copyfile(source, output / name)
+              checksums.append(hashlib.sha256(data).hexdigest() + '  ' + name)
+          (output / 'SHA256SUMS.txt').write_text('\n'.join(checksums) + '\n', encoding='ascii')
+          print('\n'.join(checksums))
+          PY
+      - name: Upload assets and publish the complete release
+        env:
+          BUILD_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          if gh release view "$RELEASE_TAG" --json isDraft,targetCommitish > existing-release.json; then
+            python3 - <<'PY'
+          import json, os
+          release = json.load(open('existing-release.json'))
+          assert release['isDraft'], 'Refuse to overwrite a published release'
+          assert release['targetCommitish'] == os.environ['BUILD_SHA'], 'Release source mismatch'
+          PY
+          else
+            printf 'Self-contained Windows x64 and ARM64 builds from `%s`.\n\n[Windows 11 build and test results](https://github.com/%s/actions/runs/%s).\n' "$BUILD_SHA" "$GH_REPO" "$VALIDATION_RUN" > release-notes.md
+            gh release create "$RELEASE_TAG" --target "$BUILD_SHA" --title "FindCopy ${RELEASE_TAG#v}" --notes-file release-notes.md --draft
+          fi
+          gh release upload "$RELEASE_TAG" release-assets/FindCopy-win-x64.exe release-assets/FindCopy-win-arm64.exe release-assets/SHA256SUMS.txt --clobber
+          gh release edit "$RELEASE_TAG" --draft=false --latest
