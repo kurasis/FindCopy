@@ -273,7 +273,10 @@ public partial class MainWindow : Window
         if (c.UsnVolumesTracked > 0 || c.UsnUnavailable > 0)
             L("USN Journal: томов отслежено / недоступно:", $"{Fmt.Num(c.UsnVolumesTracked)} / {Fmt.Num(c.UsnUnavailable)}, сброшено записей кеша: {Fmt.Num(c.UsnInvalidated)}");
         if (c.InventoryDirectoriesReused > 0 || c.InventoryRootsRebuilt > 0)
-            L("Каталогов из снимка USN / заново:", $"{Fmt.Num(c.InventoryDirectoriesReused)} / {Fmt.Num(c.InventoryRootsRebuilt)}, записей из снимка: {Fmt.Num(c.InventoryEntriesReused)}");
+        {
+            L("Каталогов / записей из снимка USN:", $"{Fmt.Num(c.InventoryDirectoriesReused)} / {Fmt.Num(c.InventoryEntriesReused)}");
+            L("Корней без пригодного снимка USN:", Fmt.Num(c.InventoryRootsRebuilt));
+        }
         if (c.CacheNote != null) L("Кеш:", c.CacheNote);
         if (c.FastEnumeratedDirectories + c.FallbackEnumeratedDirectories > 0)
             L("Обход папок: быстрый / обычный:", $"{Fmt.Num(c.FastEnumeratedDirectories)} / {Fmt.Num(c.FallbackEnumeratedDirectories)}");

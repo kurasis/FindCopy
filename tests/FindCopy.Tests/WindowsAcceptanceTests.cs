@@ -14,6 +14,9 @@ static class WindowsAcceptanceTests
             string d = Path.Combine(root, "long-recycle");
             for (int i = 0; i < 7; i++) d = Path.Combine(d, new string((char)('a' + i), 45));
             Directory.CreateDirectory(d);
+            var backend = new WindowsDeletionBackend();
+            Require(backend.RecycleBinAvailable(WindowsFileSystem.ToExtendedPath(d)), "extended local path misclassified as network");
+            Require(!backend.RecycleBinAvailable(@"\\?\UNC\server\share\file"), "extended UNC path misclassified as local");
             File.WriteAllText(Path.Combine(d, "a"), "long path recycling"); File.WriteAllText(Path.Combine(d, "b"), "long path recycling");
             var r = Scan(d); var g = r.Groups.Single(); var candidate = g.Files.Single(f => f.Path.EndsWith("b"));
             var result = new DuplicateDeleter().Run(new[] { new DeleteRequest(g, new[] { candidate }) }, DeleteMode.RecycleBin).Single();

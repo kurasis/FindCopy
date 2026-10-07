@@ -405,6 +405,9 @@ public sealed unsafe class WindowsDeletionBackend : IDeletionBackend
 
     public bool RecycleBinAvailable(string path)
     {
+        // Extended DOS paths are local paths; extended UNC paths remain network shares.
+        if (path.StartsWith(@"\\?\", StringComparison.Ordinal) && path.Length >= 7 && path[5] == ':' && path[6] == '\\')
+            path = path.Substring(4);
         string? root = Path.GetPathRoot(path);
         if (string.IsNullOrEmpty(root) || root.StartsWith(@"\\", StringComparison.Ordinal)) return false;  // network share
         uint type = GetDriveTypeW(root.EndsWith('\\') ? root : root + "\\");
@@ -420,7 +423,8 @@ public sealed unsafe class WindowsDeletionBackend : IDeletionBackend
         { error = "Идентичность открытого файла недоступна"; return false; }
         string filename = Path.GetFileName(originalPath);
         if (filename.Length > 100) filename = "file-" + Guid.NewGuid().ToString("N");
-        var parents = new[] { Path.GetTempPath(), Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        fs.TryGetVolume(originalPath, out string volumeRoot, out _);
+        var parents = new[] { Path.GetTempPath(), Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), volumeRoot,
             Path.GetPathRoot(originalPath)!, Path.GetDirectoryName(originalPath)! }.Distinct(StringComparer.OrdinalIgnoreCase);
         foreach (string parent in parents)
         {
