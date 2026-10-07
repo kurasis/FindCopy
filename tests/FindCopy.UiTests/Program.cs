@@ -387,7 +387,11 @@ internal static class Program
                             if (edit != null && save != null && save.Current.IsEnabled)
                             {
                                 edit.SetFocus();
-                                ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue(output);
+                                TypeNativeFilename(output);
+                                var value = (ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern);
+                                var typing = Stopwatch.StartNew();
+                                while (value.Current.Value != output && typing.Elapsed < TimeSpan.FromSeconds(3)) Thread.Sleep(20);
+                                if (value.Current.Value != output) throw new Exception("Native filename keyboard input was not processed");
                                 save.SetFocus();
                                 diagnostic = $"filename={edit.Current.Name}; button={save.Current.Name}; value={((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).Current.Value}";
                                 Console.WriteLine("CSV_SAVE_CONTROL: " + diagnostic);
@@ -414,6 +418,22 @@ internal static class Program
         }) { IsBackground = true };
         driver.Start(); Click(window, "ExportButton"); driver.Join();
         Require(submitted && File.Exists(output), $"Native CSV save failed: submitted={submitted}; exists={File.Exists(output)}; {diagnostic}");
+    }
+
+    private static void TypeNativeFilename(string filename)
+    {
+        Require(IntPtr.Size == 8, "native keyboard fixture requires 64-bit INPUT layout");
+        static KeyboardEvent Key(ushort vk, ushort scan, uint flags) => new()
+        { Type = 1, Keyboard = new KeyboardData { VirtualKey = vk, ScanCode = scan, Flags = flags } };
+        var keys = new List<KeyboardEvent> { Key(0x11, 0, 0), Key(0x41, 0, 0), Key(0x41, 0, 2), Key(0x11, 0, 2) };
+        foreach (char character in filename)
+        {
+            keys.Add(Key(0, character, 4 /* KEYEVENTF_UNICODE */));
+            keys.Add(Key(0, character, 6 /* KEYEVENTF_UNICODE | KEYEVENTF_KEYUP */));
+        }
+        var events = keys.ToArray();
+        if (SendInput((uint)events.Length, events, Marshal.SizeOf<KeyboardEvent>()) != events.Length)
+            throw new Exception("Native keyboard input failed: " + Marshal.GetLastWin32Error());
     }
     private static async Task Wait(Func<bool> ready)
     {
@@ -450,4 +470,12 @@ internal static class Program
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowTextW(IntPtr window, StringBuilder text, int length);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr SendMessageW(IntPtr window, uint message, IntPtr value, IntPtr parameter);
     [DllImport("user32.dll")] private static extern bool PostMessageW(IntPtr window, uint message, IntPtr value, IntPtr parameter);
+    [StructLayout(LayoutKind.Sequential)]
+    private struct KeyboardData
+    { public ushort VirtualKey, ScanCode; public uint Flags, Time; public IntPtr ExtraInfo; }
+    [StructLayout(LayoutKind.Explicit, Size = 40)]
+    private struct KeyboardEvent
+    { [FieldOffset(0)] public uint Type; [FieldOffset(8)] public KeyboardData Keyboard; }
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint SendInput(uint count, [In] KeyboardEvent[] events, int size);
 }
