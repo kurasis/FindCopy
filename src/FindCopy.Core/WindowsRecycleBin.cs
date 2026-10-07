@@ -22,13 +22,14 @@ internal static class WindowsRecycleBin
                 var operation = (IFileOperation)instance;
                 // RECYCLEONDELETE requests recycling instead of permanent deletion; WANTNUKEWARNING
                 // preserves the shell's warning if the destination cannot support that request.
-                Check(operation.SetOperationFlags(0x20000000 | 0x00080000 | 0x00100000 | 0x4000 | 0x0010 | 0x0400 | 0x0004));
+                Check(operation.SetOperationFlags(0x20000000 | 0x00080000 | 0x00100000 | 0x4000 | 0x0010 | 0x0400 | 0x0004), "SetOperationFlags");
                 var iid = new Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE");
-                Check(SHCreateItemFromParsingName(WindowsFileSystem.ToExtendedPath(path), IntPtr.Zero, ref iid, out item));
+                // Shell parsing names are ordinary DOS paths; the verified staging path is deliberately short.
+                Check(SHCreateItemFromParsingName(path, IntPtr.Zero, ref iid, out item), "SHCreateItemFromParsingName");
                 var sink = new RecycleSink();
-                Check(operation.DeleteItem(item, sink));
-                Check(operation.PerformOperations());
-                Check(operation.GetAnyOperationsAborted(out bool aborted));
+                Check(operation.DeleteItem(item, sink), "DeleteItem");
+                Check(operation.PerformOperations(), "PerformOperations");
+                Check(operation.GetAnyOperationsAborted(out bool aborted), "GetAnyOperationsAborted");
                 if (aborted || !sink.Recycled) throw new IOException("Корзина не подтвердила перемещение файла");
                 success = !File.Exists(path);
                 if (!success) failure = "Файл остался в каталоге восстановления";
@@ -47,7 +48,8 @@ internal static class WindowsRecycleBin
         return success;
     }
 
-    private static void Check(int hr) { if (hr < 0) Marshal.ThrowExceptionForHR(hr); }
+    private static void Check(int hr, string operation)
+    { if (hr < 0) throw new IOException(operation + " (0x" + hr.ToString("X8") + "): " + Marshal.GetExceptionForHR(hr)?.Message); }
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = true)]
     private static extern int SHCreateItemFromParsingName(string path, IntPtr binding, ref Guid iid, out IntPtr item);

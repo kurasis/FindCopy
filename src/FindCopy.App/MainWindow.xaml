@@ -174,8 +174,8 @@
                     <ComboBoxItem Content="файл с самым коротким путём"/>
                     <ComboBoxItem Content="первый по алфавиту"/>
                   </ComboBox>
-                  <Button Content="Отметить лишние копии" Click="OnSelectExtras" Margin="8,0,0,0" MinHeight="28" Padding="10,2"/>
-                  <Button Content="Снять отметки" Click="OnClearSelection" Margin="6,0,0,0" MinHeight="28" Padding="10,2"/>
+                  <Button x:Name="SelectExtrasButton" Content="Отметить лишние копии" Click="OnSelectExtras" Margin="8,0,0,0" MinHeight="28" Padding="10,2"/>
+                  <Button x:Name="ClearSelectionButton" Content="Снять отметки" Click="OnClearSelection" Margin="6,0,0,0" MinHeight="28" Padding="10,2"/>
                 </StackPanel>
                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                   <TextBlock x:Name="SelectionText" VerticalAlignment="Center" Foreground="{StaticResource TextMuted}" Margin="0,0,10,0"/>

@@ -8,12 +8,14 @@ public static class DatasetGenerator
 {
     private const int BufferSize = 1 << 20;
 
-    public static string Generate(string scenario, string directory, int scale, long sizeOverride = 0)
+    public static string Generate(string scenario, string directory, int scale, long sizeOverride = 0,
+        int countOverride = 0, int copies = 4, bool sparse = false)
     {
         if (scale <= 0 || sizeOverride < 0) throw new ArgumentOutOfRangeException(nameof(scale));
         string marker = directory + ".generated";
-        string version = $"v2:{scenario}:{scale}:{sizeOverride}";
-        if (File.Exists(marker) && File.ReadAllText(marker) == version) return directory;
+        if (countOverride < 0 || copies < 2) throw new ArgumentOutOfRangeException(nameof(countOverride));
+        string version = $"v3:{scenario}:{scale}:{sizeOverride}:{countOverride}:{copies}:{sparse}";
+        if (Directory.Exists(directory) && File.Exists(marker) && File.ReadAllText(marker) == version) return directory;
         if (Directory.Exists(directory) && Directory.EnumerateFileSystemEntries(directory).Any())
             throw new IOException("Refusing to overwrite an unrecognized or incomplete dataset: " + directory);
         Directory.CreateDirectory(directory);
@@ -24,7 +26,7 @@ public static class DatasetGenerator
         switch (scenario)
         {
             case "A":
-                int count = checked(20_000 * scale);
+                int count = countOverride > 0 ? countOverride : checked(20_000 * scale);
                 for (int i = 1; i <= count; i++)
                 {
                     string sub = Path.Combine(directory, (i % 100).ToString("00"));
@@ -34,25 +36,35 @@ public static class DatasetGenerator
                 break;
             case "B":
                 Array.Clear(pattern);
-                for (int i = 0; i < checked(200 * scale); i++)
+                for (int i = 0; i < (countOverride > 0 ? countOverride : checked(200 * scale)); i++)
                 {
                     random.NextBytes(pattern.AsSpan(0, 4096));
-                    WritePatternFile(Path.Combine(directory, $"b{i}.bin"), 3L * BufferSize / 2, pattern);
+                    string path = Path.Combine(directory, $"b{i}.bin");
+                    CreateSparseFile(path, 3L * BufferSize / 2);
+                    using var h = File.OpenHandle(path, FileMode.Open, FileAccess.Write);
+                    RandomAccess.Write(h, pattern.AsSpan(0, 4096), 0);
                 }
                 break;
             case "C":
             case "D":
                 long size = sizeOverride > 0 ? sizeOverride : checked((scenario == "C" ? 64L : 256L) * BufferSize * scale);
                 if (size < 65536) throw new ArgumentOutOfRangeException(nameof(sizeOverride));
-                for (int i = 0; i < 4; i++)
+                for (int i = 0; i < copies; i++)
                 {
                     string path = Path.Combine(directory, $"{scenario.ToLowerInvariant()}{i}.bin");
-                    WritePatternFile(path, size, pattern);
+                    if (sparse)
+                    {
+                        CreateSparseFile(path, size);
+                        using var handle = File.OpenHandle(path, FileMode.Open, FileAccess.Write);
+                        RandomAccess.Write(handle, pattern.AsSpan(0, 65536), 0);
+                    }
+                    else WritePatternFile(path, size, pattern);
                     if (scenario == "C")
                     {
                         using var stream = new FileStream(path, FileMode.Open, FileAccess.Write);
                         stream.Position = size / 2 + 100;
-                        stream.WriteByte((byte)i);
+                        byte[] difference = BitConverter.GetBytes((long)i);
+                        stream.Write(difference);
                     }
                 }
                 break;

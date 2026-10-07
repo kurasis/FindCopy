@@ -665,7 +665,7 @@ if (OperatingSystem.IsWindows())
         foreach (var n in new[] { "a", "b" }) File.WriteAllBytes(Path.Combine(d, n), data);
         var r = Scan(d);
         var res = Delete(r, f => f.Path.EndsWith("b"), DeleteMode.RecycleBin);
-        Check(res[0].Deleted, "recycled: " + res[0].Reason);
+        Check(res[0].Deleted && res[0].Reason == null, "recycled: " + res[0].Reason);
         Check(File.Exists(Path.Combine(d, "a")) && !File.Exists(Path.Combine(d, "b")), "files");
     });
 }

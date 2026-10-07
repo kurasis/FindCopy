@@ -272,6 +272,8 @@ public partial class MainWindow : Window
         }
         if (c.UsnVolumesTracked > 0 || c.UsnUnavailable > 0)
             L("USN Journal: томов отслежено / недоступно:", $"{Fmt.Num(c.UsnVolumesTracked)} / {Fmt.Num(c.UsnUnavailable)}, сброшено записей кеша: {Fmt.Num(c.UsnInvalidated)}");
+        if (c.InventoryDirectoriesReused > 0 || c.InventoryRootsRebuilt > 0)
+            L("Каталогов из снимка USN / заново:", $"{Fmt.Num(c.InventoryDirectoriesReused)} / {Fmt.Num(c.InventoryRootsRebuilt)}, записей из снимка: {Fmt.Num(c.InventoryEntriesReused)}");
         if (c.CacheNote != null) L("Кеш:", c.CacheNote);
         if (c.FastEnumeratedDirectories + c.FallbackEnumeratedDirectories > 0)
             L("Обход папок: быстрый / обычный:", $"{Fmt.Num(c.FastEnumeratedDirectories)} / {Fmt.Num(c.FallbackEnumeratedDirectories)}");
@@ -515,9 +517,14 @@ public partial class MainWindow : Window
         string summary = $"Удалено файлов: {Fmt.Num(deleted.Count)}, освобождено примерно {Fmt.Size(freed)}.";
         if (failed.Count > 0)
             summary += $"\n\nНе удалено: {Fmt.Num(failed.Count)}. Причины — на вкладке «Пропущено и ошибки».";
+        if (notes.Count > 0)
+            summary += $"\n\nФайлов с замечаниями: {Fmt.Num(notes.Count)}. Пути восстановления и оставленные ссылки — на вкладке «Пропущено и ошибки».";
         SummaryText.Text = summary.Replace("\n\n", " ");
-        MessageBox.Show(this, summary, "Удаление", MessageBoxButton.OK, failed.Count > 0 ? MessageBoxImage.Warning : MessageBoxImage.Information);
+        ShowNotification(summary, "Удаление", failed.Count > 0 || notes.Count > 0);
     }
+
+    protected virtual void ShowNotification(string message, string title, bool warning) =>
+        MessageBox.Show(this, message, title, MessageBoxButton.OK, warning ? MessageBoxImage.Warning : MessageBoxImage.Information);
 
     // ------------------------------------------------------------ file actions
 
