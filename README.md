@@ -1,138 +1,132 @@
 # FindCopy
 
 A Windows 10/11 duplicate-file scanner with a Russian WPF interface and a
-separate .NET 8 scanning engine. It compares file contents independently of
-names, extensions, and timestamps, and supports selection of redundant copies
-for deletion after fresh byte comparison.
+separate .NET 8 engine. It compares contents independently of names, extensions,
+and timestamps, and checks selected redundant copies again before deletion.
+Repository documentation and maintenance instructions are in English.
 
-The supplied source archive has been imported without generated `bin`, `obj`,
-or publish outputs. Repository documentation and maintenance instructions are
-in English; the original application UI remains in Russian.
+The reproduced import-audit defects have been corrected. Full specification
+acceptance is still pending, particularly native Windows execution, complete
+USN incremental enumeration, and device measurements. See the
+[current implementation audit](docs/implementation-audit.md) and
+[remaining work](docs/roadmap.md). The [original audit](docs/import-audit.md)
+records the imported source's failures; it is historical evidence.
 
-**The complete specification is not satisfied yet.** The baseline suite passes,
-but the [implementation audit](docs/implementation-audit.md) documents
-reproduced correctness and deletion-safety defects. Resolve those defects
-before relying on destructive operations. The import/audit does not fix them.
+## Build and test
 
-## Requirements and build
-
-Use the .NET 8 SDK. The cloud audit used SDK 8.0.425 on Linux x64.
-The desktop application runs on Windows; Linux can compile Windows targets
-and run the portable engine tests, but cannot validate the WPF UI or native
-Windows behavior.
-
-On Windows:
-
-```bat
-build.bat test nopause
-```
-
-This runs the baseline suite and publishes the application to
-`publish\FindCopy.exe`. `build.bat bench nopause` also publishes the benchmark
-executable. The application is published as a self-contained x64 single file.
-
-Direct commands from the repository root:
+Use .NET SDK 8.0.425, or a compatible .NET 8 SDK. The desktop application runs
+on Windows. Linux can compile Windows targets and exercise the portable engine,
+but cannot validate the WPF interface or native Windows filesystem behavior.
 
 ```sh
 dotnet restore FindCopy.sln
 dotnet build FindCopy.sln -c Release
-dotnet run -c Release --project tests/FindCopy.Tests
+dotnet run -c Release --no-build --project tests/FindCopy.Tests
+dotnet run -c Release --no-build --project tests/FindCopy.Audit
 dotnet publish src/FindCopy.App -c Release -o publish
 ```
 
-The original package references are retained: Blake3 2.2.1,
-System.IO.Hashing 9.0.9, and Microsoft.Data.Sqlite 8.0.31. No dependency
-lockfiles were supplied. No credentials or external application services are
-needed for local tests.
+Both suites are console runners: `dotnet test` does not execute their assertions.
+The current Linux run reports **39 passed, 0 failed, 3 skipped** in the baseline
+suite and **17 passed, 0 failed** in acceptance regressions. The solution includes
+both suites. GitHub Actions builds and runs them on Linux and Windows, and
+publishes the Windows executable. Native CI results must be checked separately.
 
-## Scanning workflow
+On Windows, `build.bat test nopause` runs both suites and publishes the
+self-contained x64 single file to `publish\FindCopy.exe`.
+`build.bat bench nopause` also publishes the benchmark executable.
 
-- Current-folder-only and recursive scans; multiple roots and overlapping-root
+Package references: Blake3 2.2.1, System.IO.Hashing 9.0.9, and
+Microsoft.Data.Sqlite 8.0.31. No application credentials or background services
+are required for local validation.
+
+For the Linux cloud workspace, `bash tools/setup-cloud.sh` installs the verified
+SDK when needed, restores dependencies, builds the solution, and runs both suites.
+
+## Scanning
+
+- Current-folder and recursive modes, multiple roots, and overlapping-root
   normalization.
-- Win32 Unicode enumeration, extended paths, and an optional batch directory
-  backend with physical file IDs.
-- Size grouping before content reads and physical-identity grouping for aliases.
-- Direct BLAKE3 for small files; staged XXH3 samples for large candidates:
-  start, end, middle from 16 MiB, and quarter samples from 1 GiB.
-- Streaming BLAKE3, metadata snapshots, and an optional exact byte comparison.
-- Optional named NTFS alternate-stream comparison.
-- Storage-domain concurrency limits, a global worker budget, and optional NVMe
-  autotuning.
-- SQLite fingerprint cache and optional USN-based cache invalidation. USN does
-  not currently eliminate full directory enumeration.
-- Skipped-file/error reporting and structured progress counters.
+- Unicode enumeration and long paths. Optimized Windows batch enumeration
+  falls back after errors and suppresses previously emitted entries.
+- Size grouping before content reads; physical IDs distinguish copies from
+  hard-link aliases. Empty files also have physical duplicate groups, with
+  zero savings and no content reads.
+- Direct BLAKE3 for small candidates, staged XXH3 samples for larger files:
+  start, end, middle from 16 MiB, and quarters from 1 GiB.
+- Streaming BLAKE3 and optional exact byte comparison, including named NTFS
+  streams when that option is selected. Required metadata is checked around
+  reads and again before emitting matches. Missing metadata excludes the
+  candidate and produces an issue.
+- SQLite fingerprints keyed by identity, size, write/change/creation times,
+  and hashing/sampling versions. Cache hits are revalidated against live files.
+- USN-based cache invalidation, bounded storage-domain readers, and optional
+  NVMe autotuning. USN currently still requires full directory enumeration.
+- Policy exclusions, inaccessible files, and changed files qualify result
+  completeness and appear in issue counts.
 
-Defaults skip system files, directory links, file symlinks, and non-local cloud
-content. An advanced cloud option prompts about downloads and space usage.
-These describe implemented paths; see the audit for correctness limitations.
+Defaults skip system files, directory reparse links, file symlinks, and non-local
+cloud content. Following directory links requires a verified directory identity
+for cycle detection. The advanced cloud option prompts about downloads.
 
 ## Settings and deletion
 
-Performance settings are stored at `%LOCALAPPDATA%\FindCopy\settings.json`.
-The default cache is `%LOCALAPPDATA%\FindCopy\cache.db` and can be disabled or
-cleared from the UI. USN access may need elevated permissions; ordinary scanning
-works without it.
+Settings: `%LOCALAPPDATA%\FindCopy\settings.json`.
+Cache: `%LOCALAPPDATA%\FindCopy\cache.db`, which can be disabled or cleared.
+Schema 3 invalidates older cache schemas and includes creation time. Ordinary
+scanning works without elevated permissions; USN access may require them.
 
-The UI can select redundant copies while retaining at least one physical copy.
-Recycle Bin is the default deletion mode; permanent deletion is an explicit
-choice. The deletion component performs fresh byte comparison rather than
-trusting hashes. Its alias handling and path-based recycling still have safety
-limitations documented in the audit. Long paths are supported for scanning,
-but the legacy recycling backend rejects paths of 260 characters or longer.
+Selection retains at least one physical copy. Deletion opens that keeper and
+the candidate, validates their identities and scanned versions, and compares
+bytes again. Each alias's opened identity is checked before deletion.
+Permanent deletion uses the verified Windows handle. Physical savings are
+reported conservatively when remaining links or allocation are unknown.
 
-## Validation and audit regressions
-
-```sh
-dotnet run -c Release --project tests/FindCopy.Tests
-dotnet run -c Release --project tests/FindCopy.Audit
-```
-
-At import, the Linux baseline reported **39 passed, 0 failed**. The separate
-acceptance regression runner reported **0 passed, 7 failed**, reproducing the
-findings in the audit. A failed audit check returns a nonzero exit code; it is
-not an expected-failure skip. The metadata-size check is a specification tuning
-target, distinguished from the correctness defects. Both suites use temporary
-fixtures and clean them up. They are console runners, so use `dotnet run`, not
-`dotnet test`, to execute the assertions.
-
-The audit runner is intentionally outside the supplied solution to preserve
-its original project membership. Run it explicitly. Native Windows backend
-comparison and Recycle Bin tests are conditional in the baseline suite and
-were not executed on Linux.
+Recycle Bin is the default mode. The Windows backend moves the verified open
+object into a private same-volume directory before passing its new name to the
+shell. Reusing the original name cannot redirect that recycling operation.
+Recycling reports zero immediately freed bytes. If the shell operation fails
+after staging, the result reports the recovery path under
+`.FindCopy-recycle-<id>`; the verified file remains there. The shell backend
+requires staged paths shorter than 260 characters and refuses longer ones.
+Windows runtime validation remains necessary.
 
 ## Benchmarks
 
 ```sh
 dotnet run -c Release --project tools/FindCopy.Bench -- /tmp/findcopy-bench --scenario all --cache
+dotnet run -c Release --project tools/FindCopy.Bench -- /tmp/findcopy-large --scenario D --size-mib 2048 --generate-only
 ```
-
-On Windows, use a Windows work directory or the published benchmark executable:
 
 ```bat
 FindCopy.Bench.exe C:\FindCopyBench --scenario B --threshold 256
 FindCopy.Bench.exe C:\FindCopyBench --path D:\ExistingDataset --readers 1
 ```
 
-Options include `--scenario A|B|C|D|all`, `--scale N`, `--threshold KiB`,
-`--readers N`, `--buffer KiB`, `--sample KiB`, `--enum auto|win32`, `--ads`,
-`--cache`, and `--path <existing folder>`. Results append to
-`<work-dir>/bench-results.csv`.
+Options: `--scenario A|B|C|D|all`, `--scale N`, `--size-mib N` (C/D),
+`--generate-only`, `--threshold KiB`, `--readers N`, `--buffer KiB`,
+`--sample KiB`, `--enum auto|win32`, `--ads`, `--cache`, and `--path <folder>`.
+Results append to `<work-dir>/bench-results-v2.csv`, including sampled scan
+working set and skipped/error/changed counts.
 
-The default generated workloads are reduced smoke benchmarks, not the full
-specification acceptance workloads. The large-file generator currently
-allocates an entire file and uses a 32-bit size; scenario D with scale 8
-fails. Use existing datasets through `--path` for larger files until the
-harness is corrected. Linux OS-cache measurements do not select production
-HDD/SSD/NVMe settings.
+Generated sizes use 64-bit lengths and bounded streaming buffers. A uses sparse
+unique-size files; C/D stream their content instead of allocating whole files.
+Generation refuses an existing unrecognized or incomplete dataset rather than
+silently reusing it. Large workloads still need sufficient disk space. Keep
+generated data outside the repository.
+
+A million-file A run discovered all files with zero content I/O. D with scale 8
+successfully generated four 2 GiB files. These Linux checks and reduced A–D
+benchmarks are recorded in [validation evidence](docs/implementation-audit.md).
+OS-cache measurements do not establish HDD/SSD/NVMe/network tuning.
 
 ## Repository layout
 
-- `src/FindCopy.Core`: platform abstraction, scanner, hashing, scheduling,
-  cache, USN integration, results, and deletion.
-- `src/FindCopy.App`: WPF application, view models, settings, and resources.
-- `tests/FindCopy.Tests`: original correctness console suite.
-- `tests/FindCopy.Audit`: additional acceptance regressions.
-- `tools/FindCopy.Bench`: original benchmark harness.
-- `build.bat`: Windows publishing helper.
+- `src/FindCopy.Core`: scanner, filesystem abstraction, hashing, cache, USN,
+  scheduling, results, and deletion.
+- `src/FindCopy.App`: WPF interface, view models, settings, and resources.
+- `tests/FindCopy.Tests`: baseline correctness console suite.
+- `tests/FindCopy.Audit`: acceptance and race regressions.
+- `tools/FindCopy.Bench`: bounded dataset generator and benchmark harness.
+- `build.bat`: Windows test and publishing helper.
 - [Specification](docs/specification.md): English digest of all 32 supplied sections.
-- [Audit](docs/implementation-audit.md): coverage, evidence, limitations, and fixes needed.

@@ -9,6 +9,7 @@ namespace FindCopy.Core;
 /// </summary>
 public sealed unsafe class PortableFileSystem : FileSystemBase
 {
+    private static readonly long UnixFileTime = DateTime.UnixEpoch.ToFileTimeUtc();
     private static readonly bool UseStat = OperatingSystem.IsLinux() && RuntimeInformation.ProcessArchitecture == Architecture.X64;
 
     public override FileStatus EnumerateDirectory(string dir, DirEntryHandler handler, CancellationToken ct, out string? error)
@@ -57,8 +58,8 @@ public sealed unsafe class PortableFileSystem : FileSystemBase
             identity.LinkCount = (uint)*(ulong*)(st + 16);
             identity.Size = *(long*)(st + 48);
             identity.AllocatedSize = *(long*)(st + 64) * 512;
-            identity.LastWriteTicks = *(long*)(st + 88) * 10_000_000 + *(long*)(st + 96) / 100;
-            identity.ChangeTicks = *(long*)(st + 104) * 10_000_000 + *(long*)(st + 112) / 100;
+            identity.LastWriteTicks = UnixFileTime + *(long*)(st + 88) * 10_000_000 + *(long*)(st + 96) / 100;
+            identity.ChangeTicks = UnixFileTime + *(long*)(st + 104) * 10_000_000 + *(long*)(st + 112) / 100;
             return FileStatus.Ok;
         }
         try
@@ -88,16 +89,20 @@ public sealed unsafe class PortableFileSystem : FileSystemBase
         {
             byte* st = stackalloc byte[256];
             if (fstat((int)handle.DangerousGetHandle(), st) != 0) return false;
+            s.VolumeSerial = *(ulong*)st;
             s.FileIdLow = *(ulong*)(st + 8);
+            s.LinkCount = (uint)*(ulong*)(st + 16);
+            s.AllocatedSize = *(long*)(st + 64) * 512;
             s.Size = *(long*)(st + 48);
-            s.LastWriteTicks = *(long*)(st + 88) * 10_000_000 + *(long*)(st + 96) / 100;
-            s.ChangeTicks = *(long*)(st + 104) * 10_000_000 + *(long*)(st + 112) / 100;
+            s.LastWriteTicks = UnixFileTime + *(long*)(st + 88) * 10_000_000 + *(long*)(st + 96) / 100;
+            s.ChangeTicks = UnixFileTime + *(long*)(st + 104) * 10_000_000 + *(long*)(st + 112) / 100;
             return true;
         }
         try
         {
             s.Size = RandomAccess.GetLength(handle);
-            s.LastWriteTicks = File.GetLastWriteTimeUtc(path).Ticks;
+            s.LastWriteTicks = File.GetLastWriteTimeUtc(path).ToFileTimeUtc();
+            s.CreationTicks = File.GetCreationTimeUtc(path).ToFileTimeUtc();
             return true;
         }
         catch { return false; }

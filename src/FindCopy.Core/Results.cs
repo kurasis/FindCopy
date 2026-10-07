@@ -11,6 +11,8 @@ public sealed class DuplicateFile
     public IReadOnlyList<string> HardLinkAliases { get; init; } = Array.Empty<string>();
     public int HardLinkAliasCount => HardLinkAliases.Count;
     public FileStatus Status { get; init; }
+    internal MetaSnapshot? ScannedVersion { get; init; }
+    public long EstimatedReclaimableDiskBytes => LinkCount > 0 && LinkCount == 1 + HardLinkAliasCount ? Math.Max(0, AllocatedSize) : 0;
     internal (ulong Vol, ulong Lo, ulong Hi)? PhysicalIdentity { get; init; }
 }
 
@@ -29,14 +31,15 @@ public sealed class DuplicateGroup
     /// <summary>logical_size × (unique_physical_files − 1) (ТЗ §24).</summary>
     public long ReclaimableLogicalBytes => LogicalSize * Math.Max(0, UniquePhysicalFileCount - 1);
 
-    /// <summary>Allocation of every copy except the one that would be kept (the largest), ТЗ §15/§24.</summary>
+    /// <summary>Allocation of eligible redundant objects, excluding objects retained by external links, ТЗ §15/§24.</summary>
     public long EstimatedReclaimableDiskBytes
     {
         get
         {
             if (Files.Count < 2 || LogicalSize == 0) return 0;
-            if (Files.Any(f => f.AllocatedSize < 0)) return ReclaimableLogicalBytes;
-            return Files.Sum(f => f.AllocatedSize) - Files.Max(f => f.AllocatedSize);
+            long Reclaimable(DuplicateFile file) => file.EstimatedReclaimableDiskBytes;
+            var estimates = Files.Select(Reclaimable).ToArray();
+            return estimates.Sum() - estimates.Min();
         }
     }
 }
@@ -45,6 +48,7 @@ public sealed class ScanResult
 {
     public required IReadOnlyList<DuplicateGroup> Groups { get; init; }
     /// <summary>Zero-byte files: identical by definition, reclaimable = 0 (ТЗ §6).</summary>
+    public IReadOnlyList<DuplicateGroup> ZeroByteGroups { get; init; } = Array.Empty<DuplicateGroup>();
     public required IReadOnlyList<string> ZeroByteFiles { get; init; }
     public required ScanCounters Counters { get; init; }
     public required IReadOnlyList<ScanIssue> Issues { get; init; }
@@ -57,5 +61,5 @@ public sealed class ScanResult
     public long TotalReclaimableDisk => Groups.Sum(g => g.EstimatedReclaimableDiskBytes);
 
     /// <summary>True when some files could not be checked, so "no duplicates" must be qualified (ТЗ §20).</summary>
-    public bool HasUncheckedFiles => Counters.ErrorFiles > 0 || Counters.ChangedFiles > 0 || IssueCounts.Count > 0;
+    public bool HasUncheckedFiles => Counters.SkippedDirectories > 0 || Counters.SkippedFiles > 0 || Counters.ErrorFiles > 0 || Counters.ChangedFiles > 0 || IssueCounts.Count > 0;
 }

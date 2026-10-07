@@ -12,6 +12,7 @@ public enum FileStatus : byte
     ReparseSkipped,
     Unsupported,
     Cancelled,
+    PolicySkipped,
 }
 
 public enum VerificationState
@@ -43,6 +44,7 @@ public static class FileStatusText
         FileStatus.ReparseSkipped => "REPARSE_SKIPPED",
         FileStatus.Unsupported => "UNSUPPORTED",
         FileStatus.Cancelled => "CANCELLED",
+        FileStatus.PolicySkipped => "POLICY_SKIPPED",
         _ => s.ToString(),
     };
 

@@ -1,6 +1,8 @@
 using System.Buffers;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using Microsoft.Win32.SafeHandles;
 
 namespace FindCopy.Core;
@@ -33,6 +35,13 @@ public interface IDeletionBackend
     /// <summary>True when files on this path's volume can go to the Recycle Bin.</summary>
     bool RecycleBinAvailable(string path);
     bool MoveToRecycleBin(string path, out string? error);
+    /// <summary>Atomically moves the verified open object into a private same-volume namespace.</summary>
+    bool StageForRecycle(SafeFileHandle candidate, string originalPath, out string stagedPath, out string? error)
+    {
+        stagedPath = "";
+        error = "Безопасное перемещение в корзину не поддерживается";
+        return false;
+    }
 }
 
 /// <summary>
@@ -60,7 +69,7 @@ public sealed class DuplicateDeleter
 
     /// <summary>Paths (incl. hard-link aliases) whose volume has no Recycle Bin.</summary>
     public IReadOnlyList<string> PathsWithoutRecycleBin(IEnumerable<DeleteRequest> requests) =>
-        requests.SelectMany(r => r.ToDelete).Select(f => f.Path).Where(p => !_backend.RecycleBinAvailable(p)).ToList();
+        requests.SelectMany(r => r.ToDelete).SelectMany(f => new[] { f.Path }.Concat(f.HardLinkAliases)).Where(p => !_backend.RecycleBinAvailable(p)).ToList();
 
     public List<DeleteOutcome> Run(IReadOnlyList<DeleteRequest> requests, DeleteMode mode,
         IProgress<(int Done, int Total, string Path)>? progress = null, CancellationToken ct = default) =>
@@ -99,10 +108,11 @@ public sealed class DuplicateDeleter
                     try
                     {
                         var h = _backend.OpenKeeper(k.Path);
-                        if (RandomAccess.GetLength(h) != g.LogicalSize) { h.Dispose(); continue; }
+                        if (!_fs.TryGetSnapshot(h, k.Path, out var snapshot) || !snapshot.HasIdentity ||
+                            !MatchesScan(k, snapshot) || snapshot.Size != g.LogicalSize) { h.Dispose(); continue; }
                         keeperHandle = h;
                         keeper = k;
-                        _fs.GetIdentity(k.Path, out keeperId);
+                        keeperId = IdentityOf(snapshot);
                         break;
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException) { }
@@ -170,10 +180,16 @@ public sealed class DuplicateDeleter
         try
         {
             // Unchanged since the scan: the user decided about exactly this file.
-            bool snap = _fs.TryGetSnapshot(cand, f.Path, out var before);
-            long len = snap ? before.Size : RandomAccess.GetLength(cand);
+            if (!_fs.TryGetSnapshot(cand, f.Path, out var before) || !before.HasIdentity)
+                return No("Метаданные открытого файла недоступны; удаление запрещено");
+            if (!MatchesScan(f, before) || (candId.Valid && !SameObject(before, IdentityOf(candId))))
+                return No("Открытый файл заменён после поиска или проверки пути");
+            if (!_fs.TryGetSnapshot(keeperHandle, keeper.Path, out var keeperBefore) || !MatchesScan(keeper, keeperBefore) ||
+                !SameObject(keeperBefore, IdentityOf(keeperId))) return No("Оставляемая копия изменилась");
+            if (SameObject(before, keeperBefore)) return No("Удаляемая и оставляемая копии — один файл");
+            long len = before.Size;
             if (len != g.LogicalSize) return No("Файл изменился после поиска (другой размер)");
-            if (snap && before.LastWriteTicks != 0 && f.LastWriteUtc.Ticks > 0 &&
+            if (before.LastWriteTicks != 0 && f.LastWriteUtc.Ticks > 0 &&
                 before.LastWriteTicks != f.LastWriteUtc.ToFileTimeUtc() && before.LastWriteTicks != f.LastWriteUtc.Ticks)
                 return No("Файл изменился после поиска (другая дата изменения)");
 
@@ -190,52 +206,67 @@ public sealed class DuplicateDeleter
                     return No("Содержимое не совпадает с оставляемой копией. Файл не удалён");
                 off += want;
             }
-            if (snap && (!_fs.TryGetSnapshot(cand, f.Path, out var after) || !after.Equals(before)))
+            if (!_fs.TryGetSnapshot(cand, f.Path, out var after) || !after.Equals(before) ||
+                !_fs.TryGetSnapshot(keeperHandle, keeper.Path, out var keeperAfter) || !keeperAfter.Equals(keeperBefore))
                 return No("Файл изменился во время проверки");
 
-            // Delete the verified file, then its hard-link aliases (otherwise no space is freed).
+            // Retain the verified handle during permanent alias removal; writers remain excluded on Windows.
             string? err;
             if (mode == DeleteMode.Permanent)
             {
                 if (!_backend.DeletePermanently(cand, f.Path, out err)) return No("Не удалось удалить: " + err);
-                cand.Dispose();
-                closed = true;
             }
             else
             {
+                if (!_backend.StageForRecycle(cand, f.Path, out var staged, out err))
+                    return No("Не удалось безопасно подготовить корзину: " + err);
                 cand.Dispose();
                 closed = true;
-                if (!_backend.MoveToRecycleBin(f.Path, out err)) return No("Не удалось переместить в корзину: " + err);
+                if (!_backend.MoveToRecycleBin(staged, out err))
+                    return new DeleteOutcome(f.Path, true, "Проверенный файл сохранён в " + staged + ": " + err, 0);
             }
 
             var aliasProblems = new List<string>();
             foreach (var alias in f.HardLinkAliases)
             {
                 ct.ThrowIfCancellationRequested();
-                if (_fs.GetIdentity(alias, out var aid) != FileStatus.Ok || !aid.Valid || !candId.Valid ||
-                    aid.VolumeSerial != candId.VolumeSerial || aid.FileIdLow != candId.FileIdLow || aid.FileIdHigh != candId.FileIdHigh)
+                if (_fs.GetIdentity(alias, out var aid) != FileStatus.Ok || !aid.Valid ||
+                    !SameObject(before, IdentityOf(aid)))
                 {
-                    aliasProblems.Add(alias + " (уже не жёсткая ссылка на этот файл, оставлен)");
+                    aliasProblems.Add(alias + " (ссылка заменена или недоступна, оставлена)");
                     continue;
                 }
-                bool ok;
-                if (mode == DeleteMode.Permanent)
+                try
                 {
-                    try
+                    using var ah = _backend.OpenCandidate(alias);
+                    if (!_fs.TryGetSnapshot(ah, alias, out var aliasSnapshot) ||
+                        !SameObject(before, aliasSnapshot) || aliasSnapshot.Size != before.Size ||
+                        aliasSnapshot.LastWriteTicks != before.LastWriteTicks)
                     {
-                        using var ah = _backend.OpenCandidate(alias);
-                        ok = _backend.DeletePermanently(ah, alias, out err);
+                        aliasProblems.Add(alias + " (открытый объект заменён, оставлен)");
+                        continue;
                     }
-                    catch (Exception ex) when (ex is not OperationCanceledException) { ok = false; err = ex.Message; }
+                    bool ok;
+                    if (mode == DeleteMode.Permanent) ok = _backend.DeletePermanently(ah, alias, out err);
+                    else if (_backend.RecycleBinAvailable(alias) && _backend.StageForRecycle(ah, alias, out var staged, out err))
+                    {
+                        ah.Dispose();
+                        ok = _backend.MoveToRecycleBin(staged, out err);
+                        if (!ok) err = "Проверенный файл сохранён в " + staged + ": " + err;
+                    }
+                    else { ok = false; err = "Безопасное перемещение ссылки в корзину недоступно"; }
+                    if (!ok) aliasProblems.Add(alias + ": " + err);
                 }
-                else ok = _backend.MoveToRecycleBin(alias, out err);
-                if (!ok) aliasProblems.Add(alias + ": " + err);
+                catch (Exception ex) when (ex is not OperationCanceledException) { aliasProblems.Add(alias + ": " + ex.Message); }
             }
 
-            bool lastLinkGone = aliasProblems.Count == 0;
-            long freed = lastLinkGone ? (f.AllocatedSize >= 0 ? f.AllocatedSize : f.LogicalSize) : 0;
-            string? note = aliasProblems.Count == 0 ? null
-                : "Удалён, но остались жёсткие ссылки, поэтому место не освободилось: " + string.Join("; ", aliasProblems);
+            // Inspect the still-open object, including links created concurrently outside the scanned tree.
+            bool lastLinkGone = mode == DeleteMode.Permanent && aliasProblems.Count == 0 &&
+                _fs.TryGetSnapshot(cand, f.Path, out var remainingObject) && remainingObject.LinkCount == 0;
+            long freed = mode == DeleteMode.Permanent && lastLinkGone && before.AllocatedSize >= 0 ? before.AllocatedSize : 0;
+            string? note = aliasProblems.Count > 0
+                ? "Удалён, но некоторые ссылки оставлены: " + string.Join("; ", aliasProblems)
+                : mode == DeleteMode.Permanent && !lastLinkGone ? "Место не освобождено: остались внешние ссылки или их число неизвестно" : null;
             return new DeleteOutcome(f.Path, true, note, freed);
         }
         catch (OperationCanceledException) { throw; }
@@ -245,6 +276,28 @@ public sealed class DuplicateDeleter
             if (!closed) cand.Dispose();
         }
     }
+
+    private static bool MatchesScan(DuplicateFile file, in MetaSnapshot snapshot) =>
+        (file.ScannedVersion is not { } version || version.Equals(snapshot)) &&
+        snapshot.Size == file.LogicalSize && snapshot.LastWriteTicks == file.LastWriteUtc.ToFileTimeUtc() &&
+        (file.PhysicalIdentity is not { } id ||
+            (snapshot.HasIdentity && id.Vol == snapshot.VolumeSerial && id.Lo == snapshot.FileIdLow && id.Hi == snapshot.FileIdHigh));
+
+    private static bool SameObject(in MetaSnapshot a, in MetaSnapshot b) =>
+        a.HasIdentity && b.HasIdentity && a.VolumeSerial == b.VolumeSerial &&
+        a.FileIdLow == b.FileIdLow && a.FileIdHigh == b.FileIdHigh;
+
+    private static MetaSnapshot IdentityOf(in FileIdentity id) => new()
+    {
+        VolumeSerial = id.VolumeSerial, FileIdLow = id.Valid ? id.FileIdLow : 0,
+        FileIdHigh = id.Valid ? id.FileIdHigh : 0,
+    };
+
+    private static FileIdentity IdentityOf(in MetaSnapshot snapshot) => new()
+    {
+        Valid = snapshot.HasIdentity, VolumeSerial = snapshot.VolumeSerial,
+        FileIdLow = snapshot.FileIdLow, FileIdHigh = snapshot.FileIdHigh,
+    };
 
     private static int ReadFull(SafeFileHandle h, Span<byte> buf, long off)
     {
@@ -296,11 +349,20 @@ public sealed unsafe class WindowsDeletionBackend : IDeletionBackend
 
     private static SafeFileHandle Open(string path, uint access, uint share)
     {
-        // No FILE_FLAG_OPEN_REPARSE_POINT: dedup / cloud files must be read through their filter.
-        // Links are rejected by the caller before opening.
+        // Inspect the opened reparse object itself so a symlink substituted during open cannot be followed.
         var h = CreateFileW(WindowsFileSystem.ToExtendedPath(path), access, share, IntPtr.Zero, OPEN_EXISTING,
-            FILE_FLAG_SEQUENTIAL_SCAN, IntPtr.Zero);
-        if (!h.IsInvalid) return h;
+            FILE_FLAG_SEQUENTIAL_SCAN | 0x00200000 /* FILE_FLAG_OPEN_REPARSE_POINT */, IntPtr.Zero);
+        if (!h.IsInvalid)
+        {
+            uint* tagInfo = stackalloc uint[2];
+            if (!GetFileInformationByHandleEx(h, 9 /* FileAttributeTagInfo */, tagInfo, 8) ||
+                ((tagInfo[0] & FileAttr.ReparsePoint) != 0 && ReparseTags.IsNameSurrogateLink(tagInfo[1])))
+            {
+                h.Dispose();
+                throw new IOException("Невозможно подтвердить, что файл не является ссылкой");
+            }
+            return h;
+        }
         int err = Marshal.GetLastWin32Error();
         h.Dispose();
         string msg = new System.ComponentModel.Win32Exception(err).Message;
@@ -337,6 +399,40 @@ public sealed unsafe class WindowsDeletionBackend : IDeletionBackend
         return type == 3; // DRIVE_FIXED; removable (USB), remote, CD and RAM disks have no Recycle Bin
     }
 
+    public bool StageForRecycle(SafeFileHandle candidate, string originalPath, out string stagedPath, out string? error)
+    {
+        stagedPath = "";
+        error = null;
+        string directory = Path.Combine(Path.GetDirectoryName(originalPath)!, ".FindCopy-recycle-" + Guid.NewGuid().ToString("N"));
+        string destination = Path.Combine(directory, Path.GetFileName(originalPath));
+        if (destination.Length >= 260) { error = "Слишком длинный путь для корзины"; return false; }
+        try
+        {
+            var security = new DirectorySecurity();
+            security.SetAccessRuleProtection(true, false);
+            security.AddAccessRule(new FileSystemAccessRule(WindowsIdentity.GetCurrent().User!, FileSystemRights.FullControl,
+                InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
+            new DirectoryInfo(directory).Create(security);
+            string extended = WindowsFileSystem.ToExtendedPath(destination);
+            int offset = IntPtr.Size == 8 ? 20 : 12;
+            byte[] info = new byte[offset + extended.Length * 2];
+            fixed (byte* buffer = info)
+            {
+                *(uint*)(buffer + offset - 4) = (uint)(extended.Length * 2);
+                extended.AsSpan().CopyTo(new Span<char>(buffer + offset, extended.Length));
+                if (!SetFileInformationByHandle(candidate, 3 /* FileRenameInfo */, buffer, (uint)info.Length))
+                {
+                    error = new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error()).Message;
+                    Directory.Delete(directory);
+                    return false;
+                }
+            }
+            stagedPath = destination;
+            return true;
+        }
+        catch (Exception ex) { error = ex.Message; return false; }
+    }
+
     public bool MoveToRecycleBin(string path, out string? error)
     {
         error = null;
@@ -363,8 +459,18 @@ public sealed unsafe class WindowsDeletionBackend : IDeletionBackend
             error = "Файл остался на месте";
             return false;
         }
+        try
+        {
+            string? parent = Path.GetDirectoryName(path);
+            if (parent != null && Path.GetFileName(parent).StartsWith(".FindCopy-recycle-", StringComparison.Ordinal)) Directory.Delete(parent);
+        }
+        catch { /* Leave a harmless empty staging directory if cleanup is unavailable. */ }
         return true;
     }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetFileInformationByHandleEx(SafeFileHandle handle, int infoClass, void* info, uint size);
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct SHFILEOPSTRUCTW

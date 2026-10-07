@@ -37,6 +37,7 @@ public static class Fmt
         FileStatus.SharingViolation => "Файл занят другой программой",
         FileStatus.IoError => "Ошибка чтения",
         FileStatus.ChangedDuringScan => "Изменился во время поиска",
+        FileStatus.PolicySkipped => "Исключён настройками",
         FileStatus.CloudContentNotLocal => "Только в облаке (не скачан)",
         FileStatus.ReparseSkipped => "Ссылка (не обходится)",
         FileStatus.Unsupported => "Не поддерживается",

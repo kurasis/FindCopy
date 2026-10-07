@@ -1,0 +1,33 @@
+name: Validate FindCopy
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  correctness:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.425
+      - name: Build all projects
+        run: dotnet build FindCopy.sln -c Release -m:2
+      - name: Baseline correctness suite
+        run: dotnet run -c Release --no-build --project tests/FindCopy.Tests
+      - name: Acceptance regressions and large sparse-file cancellation
+        run: dotnet run -c Release --no-build --project tests/FindCopy.Audit
+      - name: Publish Windows desktop application
+        if: runner.os == 'Windows'
+        run: dotnet publish src/FindCopy.App -c Release --no-restore -o publish
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
+        with:
+          name: FindCopy-windows-x64
+          path: publish/FindCopy.exe

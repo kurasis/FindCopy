@@ -30,7 +30,9 @@ public struct FileRecord
     public int PhysicalRep;      // index of the representative record for this physical file, -1 = none
     public int AliasCount;       // number of extra hard-link paths that map to this representative
 
-    public ulong Q1, Q2, Q3, Q4, Q5;
+    // Regrouping preserves earlier stages; only the current fingerprint belongs in each record.
+    public ulong QuickHash;
+    public long CreationTicks;
     public int FullHashSlot;     // slot in the full hash table, -1 = none
 
     public const byte FlagHasIdentity = 1;
@@ -65,9 +67,17 @@ public sealed class RecordList
 /// </summary>
 public sealed class PathStore
 {
-    private const int ChunkBits = 20;                 // 1M chars per chunk
-    private const int ChunkSize = 1 << ChunkBits;
-    private readonly List<char[]> _chunks = new() { new char[ChunkSize] };
+    private readonly int _chunkBits;
+    private readonly int _chunkSize;
+    private readonly List<char[]> _chunks = new();
+
+    public PathStore(int chunkBits = 20)
+    {
+        if (chunkBits is < 9 or > 20) throw new ArgumentOutOfRangeException(nameof(chunkBits));
+        _chunkBits = chunkBits;
+        _chunkSize = 1 << chunkBits;
+        _chunks.Add(new char[_chunkSize]);
+    }
     private int _pos;
     private readonly List<string> _dirs = new();
     private readonly List<int> _dirDomains = new();
@@ -85,23 +95,23 @@ public sealed class PathStore
 
     public long AddName(ReadOnlySpan<char> name)
     {
-        if (name.Length > ChunkSize) throw new ArgumentException("name too long");
-        if (_pos + name.Length > ChunkSize)
+        if (name.Length > _chunkSize) throw new ArgumentException("name too long");
+        if (_pos + name.Length > _chunkSize)
         {
-            _chunks.Add(new char[ChunkSize]);
+            _chunks.Add(new char[_chunkSize]);
             _pos = 0;
         }
         int chunk = _chunks.Count - 1;
         name.CopyTo(_chunks[chunk].AsSpan(_pos));
-        long handle = ((long)chunk << ChunkBits) | (uint)_pos;
+        long handle = ((long)chunk << _chunkBits) | (uint)_pos;
         _pos += name.Length;
         return handle;
     }
 
     public ReadOnlySpan<char> GetName(long handle, int length)
     {
-        int chunk = (int)(handle >> ChunkBits);
-        int off = (int)(handle & (ChunkSize - 1));
+        int chunk = (int)(handle >> _chunkBits);
+        int off = (int)(handle & (_chunkSize - 1));
         return _chunks[chunk].AsSpan(off, length);
     }
 

@@ -348,7 +348,7 @@ public partial class MainWindow : Window
     private void UpdateSelection()
     {
         var files = CheckedFiles.ToList();
-        long bytes = files.Sum(f => f.File.AllocatedSize >= 0 ? f.File.AllocatedSize : f.File.LogicalSize);
+        long bytes = files.Sum(f => f.File.EstimatedReclaimableDiskBytes);
         SelectionText.Text = files.Count == 0 ? "Ничего не отмечено"
             : $"Отмечено: {Fmt.Num(files.Count)} {Fmt.Plural(files.Count, "файл", "файла", "файлов")}, {Fmt.Size(bytes)}";
         DeleteButton.IsEnabled = files.Count > 0;
@@ -400,7 +400,7 @@ public partial class MainWindow : Window
         var noBin = permanent ? new HashSet<string>() : new HashSet<string>(deleter.PathsWithoutRecycleBin(requests), StringComparer.OrdinalIgnoreCase);
         int count = requests.Sum(r => r.ToDelete.Count);
         int aliases = requests.Sum(r => r.ToDelete.Sum(f => f.HardLinkAliasCount));
-        long bytes = requests.Sum(r => r.ToDelete.Sum(f => f.AllocatedSize >= 0 ? f.AllocatedSize : f.LogicalSize));
+        long bytes = requests.Sum(r => r.ToDelete.Sum(f => f.EstimatedReclaimableDiskBytes));
 
         if (noBin.Count > 0)
         {
@@ -417,7 +417,7 @@ public partial class MainWindow : Window
                 if (requests.Count == 0) return;
                 count = requests.Sum(r => r.ToDelete.Count);
                 aliases = requests.Sum(r => r.ToDelete.Sum(f => f.HardLinkAliasCount));
-                bytes = requests.Sum(r => r.ToDelete.Sum(f => f.AllocatedSize >= 0 ? f.AllocatedSize : f.LogicalSize));
+                bytes = requests.Sum(r => r.ToDelete.Sum(f => f.EstimatedReclaimableDiskBytes));
                 noBin.Clear();
             }
         }
@@ -481,7 +481,7 @@ public partial class MainWindow : Window
         }
         _result = new ScanResult
         {
-            Groups = newGroups, ZeroByteFiles = _result.ZeroByteFiles, Counters = _result.Counters, Issues = _result.Issues,
+            Groups = newGroups, ZeroByteFiles = _result.ZeroByteFiles, ZeroByteGroups = _result.ZeroByteGroups, Counters = _result.Counters, Issues = _result.Issues,
             IssueCounts = _result.IssueCounts, Storage = _result.Storage, Elapsed = _result.Elapsed, PhaseTimes = _result.PhaseTimes,
         };
 

@@ -28,6 +28,12 @@ if /i "%~1"=="test" (
     echo TESTS FAILED. Build stopped.
     goto :fail
   )
+  dotnet run -c Release --project tests\FindCopy.Audit\FindCopy.Audit.csproj
+  if errorlevel 1 (
+    echo.
+    echo ACCEPTANCE CHECKS FAILED. Build stopped.
+    goto :fail
+  )
 )
 
 echo.

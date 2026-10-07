@@ -25,6 +25,8 @@ public sealed class ScanController
 
     public Task<ScanResult> RunAsync(ScanOptions options, CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(options);
+        options.Tuning.Validate();
         Counters = new ScanCounters();
         var counters = Counters;
         // A fresh platform layer per run, so backend choice and per-run statistics do not leak between scans.
@@ -53,8 +55,10 @@ internal sealed class ScanRun
     private readonly IoScheduler _io;
     private readonly Dictionary<int, List<int>> _aliases = new();
     private byte[] _fullHashes = Array.Empty<byte>();
+    private List<int[]> _zeroGroups = new();
     private ScanCache? _cache;
     private readonly Dictionary<int, byte[]> _cachedFull = new();
+    private readonly Dictionary<int, CacheEntry> _cachedQuick = new();
     private readonly List<string> _volumeProbePaths = new();
     private readonly List<(ulong Vol, ulong JournalId, long NextUsn)> _usnToSave = new();
 
@@ -84,6 +88,7 @@ internal sealed class ScanRun
 
         Phase("Проверка жёстких ссылок");
         groups = ResolvePhysicalIdentity(groups);
+        if (zero.Count >= 2) _zeroGroups = ResolvePhysicalIdentity(new List<int[]> { zero.ToArray() });
 
         try
         {
@@ -143,6 +148,14 @@ internal sealed class ScanRun
             verified.AddRange(hashGroups.Select(g => (g, VerificationState.HashMatch)));
         }
 
+        // Validate live metadata even for cached hashes before publishing a result.
+        foreach (int rec in verified.SelectMany(g => g.Members).Distinct()) ValidateVersion(rec);
+        verified = verified.Select(g => (Members: g.Members.Where(i => _records[i].Status == FileStatus.Ok).ToArray(), g.State))
+            .Where(g => g.Members.Length >= 2).ToList();
+        Interlocked.Exchange(ref _c.HashMatchGroups, verified.Count);
+        Interlocked.Exchange(ref _c.ExactMatchGroups, verified.Count(g => g.State == VerificationState.ExactMatch));
+        foreach (int rec in _zeroGroups.SelectMany(g => g)) ValidateVersion(rec);
+        _zeroGroups = _zeroGroups.Select(g => g.Where(i => _records[i].Status == FileStatus.Ok).ToArray()).Where(g => g.Length >= 2).ToList();
         Phase("Готово");
         var result = BuildResult(verified, zero, sw.Elapsed);
         return result;
@@ -220,12 +233,21 @@ internal sealed class ScanRun
             if (e.IsDirectory)
             {
                 if (!_opt.Recursive) return;
-                if (_opt.SkipSystem && (a & FileAttr.System) != 0) return;
-                if (_opt.SkipHidden && (a & FileAttr.Hidden) != 0) return;
                 string child = PathStore.CombinePath(curPath, name);
-                if (excluded.Count > 0 && excluded.Contains(child)) return;
+                if ((_opt.SkipSystem && (a & FileAttr.System) != 0) || (_opt.SkipHidden && (a & FileAttr.Hidden) != 0) || excluded.Contains(child))
+                {
+                    _errors.Add(child, FileStatus.PolicySkipped, "Папка исключена настройками поиска");
+                    Interlocked.Increment(ref _c.SkippedDirectories);
+                    return;
+                }
+                if ((a & FileAttr.NotLocalMask) != 0 && !_opt.IncludeOnlineOnlyFiles)
+                {
+                    _errors.Add(child, FileStatus.CloudContentNotLocal, "Облачная папка не обходится без разрешения");
+                    Interlocked.Increment(ref _c.SkippedDirectories);
+                    return;
+                }
                 int domain = curDomain;
-                bool isLink = (a & FileAttr.ReparsePoint) != 0 && ReparseTags.IsNameSurrogateLink(e.ReparseTag);
+                bool isLink = (a & FileAttr.ReparsePoint) != 0 && !ReparseTags.IsCloud(e.ReparseTag);
                 if (isLink)
                 {
                     if (!_opt.FollowDirectoryReparsePoints)
@@ -239,7 +261,13 @@ internal sealed class ScanRun
                 if (_opt.FollowDirectoryReparsePoints)
                 {
                     // VisitedDirectoryIdentitySet: protects against loops and re-scanning (ТЗ §13).
-                    if (_fs.TryGetDirectoryIdentity(child, out var id) && !visited.Add(id))
+                    if (!_fs.TryGetDirectoryIdentity(child, out var id))
+                    {
+                        _errors.Add(child, FileStatus.Unsupported, "Без identity папки безопасный обход ссылок невозможен");
+                        Interlocked.Increment(ref _c.SkippedDirectories);
+                        return;
+                    }
+                    if (!visited.Add(id))
                     {
                         _errors.Add(child, FileStatus.ReparseSkipped, "Папка уже просканирована (цикл ссылок)");
                         return;
@@ -251,12 +279,14 @@ internal sealed class ScanRun
 
             if (_opt.SkipSystem && (a & FileAttr.System) != 0)
             {
+                _errors.Add(PathStore.CombinePath(curPath, name), FileStatus.PolicySkipped, "Системный файл исключён настройками поиска");
                 Interlocked.Increment(ref _c.SystemSkipped);
                 Interlocked.Increment(ref _c.SkippedFiles);
                 return;
             }
             if (_opt.SkipHidden && (a & FileAttr.Hidden) != 0)
             {
+                _errors.Add(PathStore.CombinePath(curPath, name), FileStatus.PolicySkipped, "Скрытый файл исключён настройками поиска");
                 Interlocked.Increment(ref _c.SkippedFiles);
                 return;
             }
@@ -315,8 +345,16 @@ internal sealed class ScanRun
             }
             int domain = _domains.GetOrAdd(_fs.GetStorageProfile(root));
             _volumeProbePaths.Add(root);
-            if (_opt.FollowDirectoryReparsePoints && _fs.TryGetDirectoryIdentity(root, out var rid) && !visited.Add(rid))
-                continue;
+            if (_opt.FollowDirectoryReparsePoints)
+            {
+                if (!_fs.TryGetDirectoryIdentity(root, out var rid))
+                {
+                    _errors.Add(root, FileStatus.Unsupported, "Без identity корневой папки безопасный обход ссылок невозможен");
+                    Interlocked.Increment(ref _c.ErrorFiles);
+                    continue;
+                }
+                if (!visited.Add(rid)) continue;
+            }
             stack.Push(_paths.AddDirectory(root, domain));
 
             while (stack.Count > 0)
@@ -391,7 +429,7 @@ internal sealed class ScanRun
 
     private List<int[]> ResolvePhysicalIdentity(List<int[]> groups)
     {
-        var all = groups.SelectMany(g => g).Where(i => (_records[i].Flags & FileRecord.FlagIdentityResolved) == 0).OrderBy(i => i).ToList();
+        var all = groups.SelectMany(g => g).OrderBy(i => i).ToList();
         _c.StageTotal = all.Count;
         _io.Run(all, DomainOf, _t.QuickReaders, 16, false, (rec, _, _) =>
         {
@@ -419,6 +457,7 @@ internal sealed class ScanRun
                 r.LinkCount = id.LinkCount;
                 r.AllocatedSize = id.AllocatedSize;
                 r.ChangeTicks = id.ChangeTicks;
+                r.CreationTicks = id.CreationTicks;
                 if (id.LastWriteTicks != 0) r.LastWriteTicks = id.LastWriteTicks;
             }
             Interlocked.Increment(ref _c.StageDone);
@@ -459,16 +498,29 @@ internal sealed class ScanRun
 
     // ------------------------------------------------------------------ Quick samples (ТЗ §9)
 
-    private static ref ulong QSlot(ref FileRecord r, int stage)
+    private static ref ulong QSlot(ref FileRecord r, int stage) => ref r.QuickHash;
+
+    private static bool MatchesVersion(in FileRecord r, in MetaSnapshot s) =>
+        r.Size == s.Size && r.LastWriteTicks == s.LastWriteTicks &&
+        r.ChangeTicks == s.ChangeTicks && r.CreationTicks == s.CreationTicks &&
+        (!r.HasIdentity || (s.HasIdentity && r.VolumeSerial == s.VolumeSerial &&
+            r.FileIdLow == s.FileIdLow && r.FileIdHigh == s.FileIdHigh));
+
+    private bool ValidateVersion(int rec)
     {
-        switch (stage)
+        if (_records[rec].Status != FileStatus.Ok) return false;
+        var st = _fs.GetIdentity(PathOf(rec), out var id);
+        if (st != FileStatus.Ok) { Fail(rec, st); return false; }
+        ref var r = ref _records[rec];
+        if (id.Size != r.Size || id.LastWriteTicks != r.LastWriteTicks ||
+            id.ChangeTicks != r.ChangeTicks || id.CreationTicks != r.CreationTicks ||
+            (r.HasIdentity && (!id.Valid || id.VolumeSerial != r.VolumeSerial ||
+                id.FileIdLow != r.FileIdLow || id.FileIdHigh != r.FileIdHigh)))
         {
-            case 1: return ref r.Q1;
-            case 2: return ref r.Q2;
-            case 3: return ref r.Q3;
-            case 4: return ref r.Q4;
-            default: return ref r.Q5;
+            Fail(rec, FileStatus.ChangedDuringScan, "Файл изменился после проверки");
+            return false;
         }
+        return true;
     }
 
     /// <param name="offsetFor">Deterministic sample offset for a file size, or -1 when the stage does not apply.</param>
@@ -485,6 +537,8 @@ internal sealed class ScanRun
         var fromCache = items.Where(i => (_records[i].CachedQMask & bit) != 0).ToList();
         if (fromCache.Count > 0)
         {
+            foreach (int rec in fromCache)
+                if (ValidateVersion(rec)) _records[rec].QuickHash = _cachedQuick[rec].Q[stage - 1];
             items = items.Where(i => (_records[i].CachedQMask & bit) == 0).ToList();
             Interlocked.Add(ref _c.StageDone, fromCache.Count);
         }
@@ -495,21 +549,23 @@ internal sealed class ScanRun
             try
             {
                 using var h = _fs.OpenRead(path, sequential: false);
-                long len = RandomAccess.GetLength(h);
-                if (len != r.Size) { Fail(rec, FileStatus.ChangedDuringScan, "Размер изменился во время сканирования"); return; }
+                if (!_fs.TryGetSnapshot(h, path, out var before)) { Fail(rec, FileStatus.Unsupported, "Метаданные для проверки изменений недоступны"); return; }
+                if (!MatchesVersion(r, before)) { Fail(rec, FileStatus.ChangedDuringScan, "Размер изменился во время сканирования"); return; }
                 long off = offsetFor(r.Size);
                 int want = (int)Math.Min(sample, r.Size - off);
                 int got = 0;
                 while (got < want)
                 {
+                    _ct.ThrowIfCancellationRequested();
                     int n = RandomAccess.Read(h, buf.AsSpan(got, want - got), off + got);
+                    Interlocked.Add(ref _c.QuickHashBytesRead, n);
                     if (n == 0) break;
                     got += n;
                 }
                 if (got != want) { Fail(rec, FileStatus.ChangedDuringScan, "Файл укоротился во время чтения"); return; }
+                if (!_fs.TryGetSnapshot(h, path, out var after) || !after.Equals(before)) { Fail(rec, FileStatus.ChangedDuringScan, "Файл изменился во время выборки"); return; }
                 QSlot(ref r, stage) = _quick.Hash(buf.AsSpan(0, got));
                 Interlocked.Increment(ref _c.QuickHashFiles);
-                Interlocked.Add(ref _c.QuickHashBytesRead, got);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -540,7 +596,7 @@ internal sealed class ScanRun
 
     private List<int[]> FullHashStage(List<int[]> groups)
     {
-        var items = groups.SelectMany(g => g).OrderBy(i => i).ToList();
+        var items = groups.SelectMany(g => g).Where(i => _records[i].Status == FileStatus.Ok).OrderBy(i => i).ToList();
         _fullHashes = new byte[items.Count * 32];
         for (int s = 0; s < items.Count; s++) _records[items[s]].FullHashSlot = s;
         foreach (int i in items.Where(i => _cachedFull.ContainsKey(i)))
@@ -596,9 +652,8 @@ internal sealed class ScanRun
         try
         {
             using var h = _fs.OpenRead(path, sequential: true);
-            bool hasBefore = _fs.TryGetSnapshot(h, path, out var before);
-            long len = hasBefore ? before.Size : RandomAccess.GetLength(h);
-            if (len != size) { message = "Размер изменился во время сканирования"; return FileStatus.ChangedDuringScan; }
+            if (!_fs.TryGetSnapshot(h, path, out var before)) { message = "Метаданные для проверки изменений недоступны"; return FileStatus.Unsupported; }
+            if (!MatchesVersion(_records[rec], before)) { message = "Размер изменился во время сканирования"; return FileStatus.ChangedDuringScan; }
 
             using var state = _full.Create();
             long off = 0;
@@ -618,24 +673,15 @@ internal sealed class ScanRun
                 _opt.AfterFullHashBlock?.Invoke(path, block++);
             }
 
-            if (hasBefore)
+            if (!_fs.TryGetSnapshot(h, path, out var after) || !after.Equals(before))
             {
-                if (!_fs.TryGetSnapshot(h, path, out var after) || !after.Equals(before))
-                {
-                    message = "Файл изменился во время хеширования";
-                    Interlocked.Add(ref _c.StageDone, -progressed);
-                    return FileStatus.ChangedDuringScan;
-                }
-            }
-            else if (RandomAccess.GetLength(h) != size)
-            {
-                message = "Размер изменился во время хеширования";
+                message = "Файл изменился во время хеширования";
                 Interlocked.Add(ref _c.StageDone, -progressed);
                 return FileStatus.ChangedDuringScan;
             }
 
             state.Finalize(_fullHashes.AsSpan(_records[rec].FullHashSlot * 32, 32));
-            snapshot = hasBefore ? before : default;
+            snapshot = before;
             return FileStatus.Ok;
         }
         catch (OperationCanceledException) { throw; }
@@ -675,6 +721,7 @@ internal sealed class ScanRun
             Size = r.Size,
             LastWriteTicks = lastWrite,
             ChangeTicks = change,
+            CreationTicks = r.CreationTicks,
         };
     }
 
@@ -686,6 +733,7 @@ internal sealed class ScanRun
         {
             _ct.ThrowIfCancellationRequested();
             ref var r = ref _records[i];
+            if (!ValidateVersion(i)) continue;
             CacheEntry? e;
             bool hit;
             try { hit = _cache!.TryGet(KeyOf(i, r.LastWriteTicks, r.ChangeTicks), out e); }
@@ -693,8 +741,7 @@ internal sealed class ScanRun
             if (hit && e != null)
             {
                 Interlocked.Increment(ref _c.CacheHits);
-                for (int s = 0; s < 5; s++)
-                    if ((e.QMask & (1 << s)) != 0) QSlot(ref r, s + 1) = e.Q[s];
+                _cachedQuick[i] = e;
                 r.CachedQMask = e.QMask;
                 if (e.FullHash != null)
                 {
@@ -842,6 +889,9 @@ internal sealed class ScanRun
             string path = PathOf(rec);
             try
             {
+                using var primary = _fs.OpenRead(path, sequential: false);
+                if (!_fs.TryGetSnapshot(primary, path, out var primaryBefore)) { Fail(rec, FileStatus.Unsupported, "Метаданные для ADS недоступны"); return; }
+                if (!MatchesVersion(_records[rec], primaryBefore)) { Fail(rec, FileStatus.ChangedDuringScan); return; }
                 var streams = new List<(string Name, long Size)>();
                 var st = _fs.ListAlternateStreams(path, streams);
                 if (st != FileStatus.Ok) { Fail(rec, st, "Не удалось перечислить альтернативные потоки"); return; }
@@ -872,6 +922,12 @@ internal sealed class ScanRun
                     content.Finalize(tmp);
                     sig.Update(tmp);
                 }
+                var streamsAfter = new List<(string Name, long Size)>();
+                var afterStatus = _fs.ListAlternateStreams(path, streamsAfter);
+                streamsAfter.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
+                if (afterStatus != FileStatus.Ok || !streams.SequenceEqual(streamsAfter) ||
+                    !_fs.TryGetSnapshot(primary, path, out var primaryAfter) || !primaryAfter.Equals(primaryBefore))
+                { Fail(rec, FileStatus.ChangedDuringScan, "Альтернативные потоки изменились"); return; }
                 sig.Finalize(tmp);
                 var key = (BitConverter.ToUInt64(tmp), BitConverter.ToUInt64(tmp[8..]), BitConverter.ToUInt64(tmp[16..]), BitConverter.ToUInt64(tmp[24..]));
                 lock (gate) sigs[rec] = key;
@@ -957,6 +1013,8 @@ internal sealed class ScanRun
 
             bool snapA = _fs.TryGetSnapshot(ha, pa, out var sa0);
             bool snapB = _fs.TryGetSnapshot(hb, pb, out var sb0);
+            if (!snapA || !MatchesVersion(_records[a], sa0)) { failedRec = a; _records[a].Status = snapA ? FileStatus.ChangedDuringScan : FileStatus.Unsupported; message = "Версия файла для сравнения изменилась или недоступна"; return CompareResult.Failed; }
+            if (!snapB || !MatchesVersion(_records[b], sb0)) { failedRec = b; _records[b].Status = snapB ? FileStatus.ChangedDuringScan : FileStatus.Unsupported; message = "Версия файла для сравнения изменилась или недоступна"; return CompareResult.Failed; }
             long off = 0;
             int bufLen = Math.Min(ba.Length, bb.Length);
             while (off < size)
@@ -972,6 +1030,58 @@ internal sealed class ScanRun
                 if (!ba.AsSpan(0, want).SequenceEqual(bb.AsSpan(0, want)))
                     return CompareResult.Different;   // stop at the first differing block
                 off += want;
+            }
+            if (_opt.CompareAlternateStreams)
+            {
+                var streamsA = new List<(string Name, long Size)>();
+                var streamsB = new List<(string Name, long Size)>();
+                var statusA = _fs.ListAlternateStreams(pa, streamsA);
+                var statusB = _fs.ListAlternateStreams(pb, streamsB);
+                if (statusA != FileStatus.Ok || statusB != FileStatus.Ok)
+                {
+                    failedRec = statusA != FileStatus.Ok ? a : b;
+                    _records[failedRec].Status = statusA != FileStatus.Ok ? statusA : statusB;
+                    message = "Альтернативные потоки для точной проверки недоступны";
+                    return CompareResult.Failed;
+                }
+                streamsA.Sort((x, y) => StringComparer.OrdinalIgnoreCase.Compare(x.Name, y.Name));
+                streamsB.Sort((x, y) => StringComparer.OrdinalIgnoreCase.Compare(x.Name, y.Name));
+                if (streamsA.Count != streamsB.Count) return CompareResult.Different;
+                for (int i = 0; i < streamsA.Count; i++)
+                {
+                    var streamA = streamsA[i]; var streamB = streamsB[i];
+                    if (streamA.Size != streamB.Size || !StringComparer.OrdinalIgnoreCase.Equals(streamA.Name, streamB.Name))
+                        return CompareResult.Different;
+                    using var ah = _fs.OpenAlternateStream(pa, streamA.Name);
+                    using var bh = _fs.OpenAlternateStream(pb, streamB.Name);
+                    bool aSnapshot = _fs.TryGetSnapshot(ah, pa, out var aBefore);
+                    bool bSnapshot = _fs.TryGetSnapshot(bh, pb, out var bBefore);
+                    if (!aSnapshot || !bSnapshot || aBefore.Size != streamA.Size || bBefore.Size != streamB.Size)
+                    {
+                        failedRec = !aSnapshot || aBefore.Size != streamA.Size ? a : b;
+                        _records[failedRec].Status = !aSnapshot || !bSnapshot ? FileStatus.Unsupported : FileStatus.ChangedDuringScan;
+                        message = "Версия альтернативного потока недоступна или изменилась";
+                        return CompareResult.Failed;
+                    }
+                    for (long position = 0; position < streamA.Size;)
+                    {
+                        _ct.ThrowIfCancellationRequested();
+                        int want = (int)Math.Min(bufLen, streamA.Size - position);
+                        int na = ReadFull(ah, ba.AsSpan(0, want), position), nb = ReadFull(bh, bb.AsSpan(0, want), position);
+                        Interlocked.Add(ref _c.ExactCompareBytesRead, na + nb);
+                        if (na != want || nb != want)
+                        {
+                            failedRec = na != want ? a : b; _records[failedRec].Status = FileStatus.ChangedDuringScan;
+                            message = "Альтернативный поток укоротился"; return CompareResult.Failed;
+                        }
+                        if (!ba.AsSpan(0, want).SequenceEqual(bb.AsSpan(0, want))) return CompareResult.Different;
+                        position += want;
+                    }
+                    if (!_fs.TryGetSnapshot(ah, pa, out var aAfter) || !aAfter.Equals(aBefore))
+                    { failedRec = a; _records[a].Status = FileStatus.ChangedDuringScan; return CompareResult.Failed; }
+                    if (!_fs.TryGetSnapshot(bh, pb, out var bAfter) || !bAfter.Equals(bBefore))
+                    { failedRec = b; _records[b].Status = FileStatus.ChangedDuringScan; return CompareResult.Failed; }
+                }
             }
             if (snapA && (!_fs.TryGetSnapshot(ha, pa, out var sa1) || !sa1.Equals(sa0))) { failedRec = a; _records[a].Status = FileStatus.ChangedDuringScan; message = "Файл изменился во время сравнения"; return CompareResult.Failed; }
             if (snapB && (!_fs.TryGetSnapshot(hb, pb, out var sb1) || !sb1.Equals(sb0))) { failedRec = b; _records[b].Status = FileStatus.ChangedDuringScan; message = "Файл изменился во время сравнения"; return CompareResult.Failed; }
@@ -1006,26 +1116,31 @@ internal sealed class ScanRun
 
     // ------------------------------------------------------------------ Results (ТЗ §23, §24)
 
+    private DuplicateFile ResultFile(int m)
+    {
+        ref var r = ref _records[m];
+        return new DuplicateFile
+        {
+            Path = PathOf(m),
+            LogicalSize = r.Size,
+            AllocatedSize = r.AllocatedSize,
+            LastWriteUtc = DateTime.FromFileTimeUtc(Math.Max(0, r.LastWriteTicks)),
+            LinkCount = r.LinkCount,
+            HardLinkAliases = _aliases.TryGetValue(m, out var al) ? al.Select(PathOf).ToArray() : Array.Empty<string>(),
+            Status = r.Status,
+            ScannedVersion = new MetaSnapshot { Size = r.Size, LastWriteTicks = r.LastWriteTicks,
+                ChangeTicks = r.ChangeTicks, CreationTicks = r.CreationTicks, VolumeSerial = r.VolumeSerial,
+                FileIdLow = r.FileIdLow, FileIdHigh = r.FileIdHigh },
+            PhysicalIdentity = r.HasIdentity ? (r.VolumeSerial, r.FileIdLow, r.FileIdHigh) : null,
+        };
+    }
+
     private ScanResult BuildResult(List<(int[] Members, VerificationState State)> groups, List<int> zero, TimeSpan elapsed)
     {
         var list = new List<DuplicateGroup>();
         foreach (var (members, state) in groups)
         {
-            var files = members.Select(m =>
-            {
-                ref var r = ref _records[m];
-                return new DuplicateFile
-                {
-                    Path = PathOf(m),
-                    LogicalSize = r.Size,
-                    AllocatedSize = r.AllocatedSize,
-                    LastWriteUtc = DateTime.FromFileTimeUtc(Math.Max(0, r.LastWriteTicks)),
-                    LinkCount = r.LinkCount,
-                    HardLinkAliases = _aliases.TryGetValue(m, out var al) ? al.Select(PathOf).ToArray() : Array.Empty<string>(),
-                    Status = r.Status,
-                    PhysicalIdentity = r.HasIdentity ? (r.VolumeSerial, r.FileIdLow, r.FileIdHigh) : null,
-                };
-            }).OrderBy(f => f.Path, StringComparer.OrdinalIgnoreCase).ToList();
+            var files = members.Select(ResultFile).OrderBy(f => f.Path, StringComparer.OrdinalIgnoreCase).ToList();
 
             list.Add(new DuplicateGroup
             {
@@ -1044,7 +1159,13 @@ internal sealed class ScanRun
         return new ScanResult
         {
             Groups = numbered,
-            ZeroByteFiles = zero.Select(PathOf).ToList(),
+            ZeroByteFiles = zero.Where(i => _records[i].Status == FileStatus.Ok).Select(PathOf).ToList(),
+            ZeroByteGroups = _zeroGroups.Select((g, i) => new DuplicateGroup
+            {
+                GroupId = i + 1, LogicalSize = 0,
+                Hash = "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
+                Verification = VerificationState.ExactMatch, Files = g.Select(ResultFile).ToArray(),
+            }).ToArray(),
             Counters = _c.Snapshot(),
             Issues = _errors.Issues,
             IssueCounts = _errors.Counts,

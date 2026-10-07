@@ -4,7 +4,7 @@ using FindCopy.Core;
 using Microsoft.Win32.SafeHandles;
 
 // Correctness tests from ТЗ §27. Runs on Linux (PortableFileSystem) and on Windows (WindowsFileSystem).
-int passed = 0, failed = 0;
+int passed = 0, failed = 0, skipped = 0;
 var root = Path.Combine(Path.GetTempPath(), "findcopy-tests-" + Guid.NewGuid().ToString("N")[..8]);
 Directory.CreateDirectory(root);
 
@@ -37,6 +37,7 @@ ScanResult Scan(string dir, Action<ScanOptionsBuilder>? cfg = null, IFileSystem?
 void Test(string name, Action body)
 {
     try { body(); passed++; Console.WriteLine("  ok   " + name); }
+    catch (SkippedTestException ex) { skipped++; Console.WriteLine("  SKIP " + name + ": " + ex.Message); }
     catch (Exception ex) { failed++; Console.WriteLine("  FAIL " + name + ": " + ex.Message); }
 }
 
@@ -153,14 +154,14 @@ if (canStat)
     });
 }
 
-if (!OperatingSystem.IsWindows())
 {
-    Test("08 directory symlink loop -> no infinite recursion", () =>
+    Test("08 directory link loop -> no infinite recursion", () =>
     {
         var d = NewDir("t08");
         var sub = Path.Combine(d, "sub"); Directory.CreateDirectory(sub);
         File.WriteAllBytes(Path.Combine(sub, "f"), Rand(100, 10));
-        Directory.CreateSymbolicLink(Path.Combine(sub, "loop"), d);
+        if (OperatingSystem.IsWindows()) Native.Junction(d, Path.Combine(sub, "loop"));
+        else Directory.CreateSymbolicLink(Path.Combine(sub, "loop"), d);
         var r1 = Scan(d);
         Check(r1.IssueCounts.GetValueOrDefault(FileStatus.ReparseSkipped) == 1, "link skipped by default");
         var r2 = Scan(d, o => o.FollowDirectoryReparsePoints = true);
@@ -173,7 +174,7 @@ Test("09 symlink to a file inside the tree -> not a second copy", () =>
     var d = NewDir("t09");
     File.WriteAllBytes(Path.Combine(d, "target"), Rand(1000, 11));
     try { File.CreateSymbolicLink(Path.Combine(d, "link"), Path.Combine(d, "target")); }
-    catch (Exception ex) { Console.WriteLine("       (skipped: cannot create symlink: " + ex.Message + ")"); return; }
+    catch (Exception ex) { throw new SkippedTestException("Cannot create symlink: " + ex.Message); }
     var r = Scan(d);
     Check(r.Groups.Count == 0, "no groups");
     Check(r.Counters.FilesDiscovered == 1, "symlink not counted");
@@ -213,7 +214,7 @@ Test("11 file deleted during scan -> status, scan continues", () =>
         foreach (var other in Directory.GetFiles(d).Where(x => x != p).Take(1)) File.Delete(other);
     });
     Check(r.Groups.Count == 1, "remaining duplicates reported");
-    Check(r.IssueCounts.GetValueOrDefault(FileStatus.FileNotFoundDuringScan) <= 1, "not-found status");
+    Check(r.IssueCounts.GetValueOrDefault(FileStatus.FileNotFoundDuringScan) == 1, "not-found status");
     Check(r.Groups[0].Files.Count >= 2, "group");
 });
 
@@ -236,6 +237,7 @@ Test("13 sparse and regular file with same logical content -> duplicate", () =>
     var tail = Rand(1000, 15);
     using (var fs = new FileStream(Path.Combine(d, "sparse"), FileMode.Create))
     {
+        if (OperatingSystem.IsWindows()) Native.Sparse(fs.SafeFileHandle);
         fs.SetLength(8 * MiB);
         fs.Seek(8 * MiB - 1000, SeekOrigin.Begin);
         fs.Write(tail);
@@ -246,6 +248,21 @@ Test("13 sparse and regular file with same logical content -> duplicate", () =>
     var r = Scan(d);
     Check(r.Groups.Count == 1, "duplicate");
 });
+
+if (OperatingSystem.IsWindows())
+{
+    Test("14 NTFS compressed and uncompressed logical-equivalent files", () =>
+    {
+        var d = NewDir("t14");
+        var bytes = new byte[4 * MiB]; bytes[100] = 42;
+        File.WriteAllBytes(Path.Combine(d, "compressed"), bytes);
+        File.WriteAllBytes(Path.Combine(d, "regular"), bytes);
+        using (var handle = File.OpenHandle(Path.Combine(d, "compressed"), FileMode.Open, FileAccess.ReadWrite)) Native.Compress(handle);
+        Check((File.GetAttributes(Path.Combine(d, "compressed")) & FileAttributes.Compressed) != 0, "compressed attribute");
+        Check(Scan(d).Groups.Single().UniquePhysicalFileCount == 2, "logical contents match");
+    });
+}
+else { skipped++; Console.WriteLine("  SKIP 14 native NTFS compression requires Windows"); }
 
 Test("15 zero-byte files -> separate list, reclaimable 0", () =>
 {
@@ -489,6 +506,8 @@ Test("31 alternate streams mode: named streams must match too", () =>
     Check(on.Counters.AlternateStreamFiles == 3, "all checked");
     File.WriteAllBytes(Path.Combine(streamDir, "zone2"), Encoding.ASCII.GetBytes("[ZoneTransfer]\nZoneId=4"));
     Check(Scan(d, o => o.CompareAlternateStreams = true, fs: fs).Groups.Count == 0, "different stream content");
+    Check(Scan(d, o => { o.CompareAlternateStreams = true; o.ExactVerification = true; }, fs: fs, f: new ConstFull()).Groups.Count == 0,
+        "strict ADS verification rejects mocked full-hash collisions");
 });
 
 Test("32 cache: changed sample size ignores cached quick hashes, keeps full hashes", () =>
@@ -529,6 +548,8 @@ if (OperatingSystem.IsWindows())
         }
     });
 }
+
+else { skipped++; Console.WriteLine("  SKIP 33 native Windows enumeration backends require Windows"); }
 
 // ---------------------------------------------------------------- deletion
 
@@ -649,8 +670,10 @@ if (OperatingSystem.IsWindows())
     });
 }
 
+else { skipped++; Console.WriteLine("  SKIP D8 native Recycle Bin requires Windows"); }
+
 try { Directory.Delete(root, true); } catch { }
-Console.WriteLine($"\n{passed} passed, {failed} failed");
+Console.WriteLine($"\n{passed} passed, {failed} failed, {skipped} skipped");
 return failed == 0 ? 0 : 1;
 
 sealed class ScanOptionsBuilder
@@ -763,8 +786,35 @@ sealed class FakeUsnFs : IFileSystem, IUsnSource
     }
 }
 
+sealed class SkippedTestException(string message) : Exception(message);
+
 static class Native
 {
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool DeviceIoControl(SafeFileHandle h, uint code, IntPtr input, uint inputSize, IntPtr output, uint outputSize, out uint returned, IntPtr overlapped);
+    [DllImport("kernel32.dll", SetLastError = true, EntryPoint = "DeviceIoControl")]
+    private static extern bool CompressionIoControl(SafeFileHandle h, uint code, ref ushort input, uint inputSize, IntPtr output, uint outputSize, out uint returned, IntPtr overlapped);
+
+    public static void Sparse(SafeFileHandle handle)
+    {
+        if (!DeviceIoControl(handle, 0x000900C4, IntPtr.Zero, 0, IntPtr.Zero, 0, out _, IntPtr.Zero))
+            throw new SkippedTestException("Filesystem does not support sparse files");
+    }
+    public static void Compress(SafeFileHandle handle)
+    {
+        ushort format = 2;
+        if (!CompressionIoControl(handle, 0x0009C040, ref format, 2, IntPtr.Zero, 0, out _, IntPtr.Zero))
+            throw new SkippedTestException("Filesystem does not support NTFS compression");
+    }
+    public static void Junction(string target, string link)
+    {
+        var start = new System.Diagnostics.ProcessStartInfo("cmd.exe") { UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true };
+        start.Arguments = "/c mklink /J \"" + link + "\" \"" + target + "\"";
+        using var process = System.Diagnostics.Process.Start(start)!;
+        process.WaitForExit();
+        if (process.ExitCode != 0) throw new IOException("Cannot create junction: " + process.StandardError.ReadToEnd());
+    }
+
     [DllImport("libc", SetLastError = true)]
     private static extern int link(string oldpath, string newpath);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]

@@ -13,8 +13,9 @@
   fixing them is part of the requested task.
 - Build with .NET 8. Run the baseline console suite with
   `dotnet run -c Release --project tests/FindCopy.Tests`.
-- The additional `tests/FindCopy.Audit` runner contains acceptance regressions
-  that currently fail. See `docs/implementation-audit.md`; do not disable or
-  weaken them to claim readiness.
+- Run acceptance regressions with
+  `dotnet run -c Release --project tests/FindCopy.Audit` as well. Both runners
+  must pass; do not disable or weaken checks to claim readiness. Consult
+  `docs/implementation-audit.md` for remaining specification gaps.
 - WPF and native Windows filesystem operations require Windows runtime
   validation. A Linux cross-build is compilation evidence only.

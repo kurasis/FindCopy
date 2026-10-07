@@ -13,6 +13,7 @@ public struct CacheKey
     public long Size;
     public long LastWriteTicks;
     public long ChangeTicks;
+    public long CreationTicks;
 }
 
 public sealed class CacheEntry
@@ -31,7 +32,7 @@ public sealed class CacheEntry
 /// </summary>
 public sealed class ScanCache : IDisposable
 {
-    public const int SchemaVersion = 2;
+    public const int SchemaVersion = 3;
     public const int HashAlgorithmVersion = 1;      // 1 = XXH3_64 quick, BLAKE3-256 full
     private const int PruneAfterDays = 180;
 
@@ -57,7 +58,7 @@ public sealed class ScanCache : IDisposable
             Exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000;");
             InitSchema();
         }
-        catch (SqliteException)
+        catch (SqliteException ex) when (ex.SqliteErrorCode is 11 or 26)
         {
             // A damaged cache is just thrown away: it can only cost re-hashing, never a false duplicate.
             _db.Close();
@@ -88,7 +89,7 @@ public sealed class ScanCache : IDisposable
                  id INTEGER PRIMARY KEY,
                  has_id INTEGER NOT NULL, vol INTEGER NOT NULL, fid_lo INTEGER NOT NULL, fid_hi INTEGER NOT NULL,
                  path TEXT NOT NULL, path_key TEXT NOT NULL,
-                 size INTEGER NOT NULL, mtime INTEGER NOT NULL, ctime INTEGER NOT NULL,
+                 size INTEGER NOT NULL, mtime INTEGER NOT NULL, ctime INTEGER NOT NULL, creation INTEGER NOT NULL,
                  sampling_ver INTEGER NOT NULL, hash_ver INTEGER NOT NULL, sample_size INTEGER NOT NULL,
                  qmask INTEGER NOT NULL, q1 INTEGER, q2 INTEGER, q3 INTEGER, q4 INTEGER, q5 INTEGER,
                  full BLOB, seen INTEGER NOT NULL);
@@ -121,7 +122,7 @@ public sealed class ScanCache : IDisposable
         SqliteCommand cmd;
         if (key.HasId)
         {
-            _getById ??= Prepare("SELECT size, mtime, ctime, sampling_ver, hash_ver, qmask, q1, q2, q3, q4, q5, full, sample_size FROM files WHERE has_id=1 AND vol=$a AND fid_lo=$b AND fid_hi=$c;", "$a", "$b", "$c");
+            _getById ??= Prepare("SELECT size, mtime, ctime, sampling_ver, hash_ver, qmask, q1, q2, q3, q4, q5, full, sample_size, creation FROM files WHERE has_id=1 AND vol=$a AND fid_lo=$b AND fid_hi=$c;", "$a", "$b", "$c");
             cmd = _getById;
             cmd.Parameters[0].Value = unchecked((long)key.VolumeSerial);
             cmd.Parameters[1].Value = unchecked((long)key.FileIdLow);
@@ -129,14 +130,14 @@ public sealed class ScanCache : IDisposable
         }
         else
         {
-            _getByPath ??= Prepare("SELECT size, mtime, ctime, sampling_ver, hash_ver, qmask, q1, q2, q3, q4, q5, full, sample_size FROM files WHERE has_id=0 AND path_key=$a;", "$a");
+            _getByPath ??= Prepare("SELECT size, mtime, ctime, sampling_ver, hash_ver, qmask, q1, q2, q3, q4, q5, full, sample_size, creation FROM files WHERE has_id=0 AND path_key=$a;", "$a");
             cmd = _getByPath;
             cmd.Parameters[0].Value = PathKey(key.Path);
         }
         using var r = cmd.ExecuteReader();
         if (!r.Read()) return false;
         // Strict validation: identity is not enough, metadata must be unchanged (ТЗ §18).
-        if (r.GetInt64(0) != key.Size || r.GetInt64(1) != key.LastWriteTicks || r.GetInt64(2) != key.ChangeTicks) return false;
+        if (r.GetInt64(0) != key.Size || r.GetInt64(1) != key.LastWriteTicks || r.GetInt64(2) != key.ChangeTicks || r.GetInt64(13) != key.CreationTicks) return false;
         if (r.GetInt32(3) != Tuning.SamplingSchemeVersion || r.GetInt32(4) != HashAlgorithmVersion) return false;
         // Quick hashes depend on the sample size; the full hash does not.
         var e = new CacheEntry { QMask = r.GetInt32(12) == _sampleSize ? (byte)r.GetInt32(5) : (byte)0 };
@@ -170,9 +171,9 @@ public sealed class ScanCache : IDisposable
         del.Transaction = tx;
         using var ins = _db.CreateCommand();
         ins.Transaction = tx;
-        ins.CommandText = @"INSERT INTO files(has_id, vol, fid_lo, fid_hi, path, path_key, size, mtime, ctime, sampling_ver, hash_ver, qmask, q1, q2, q3, q4, q5, full, seen, sample_size)
-                            VALUES($hid, $vol, $lo, $hi, $path, $pk, $size, $mt, $ct, $sv, $hv, $qm, $q1, $q2, $q3, $q4, $q5, $full, $seen, $ss);";
-        foreach (var n in new[] { "$hid", "$vol", "$lo", "$hi", "$path", "$pk", "$size", "$mt", "$ct", "$sv", "$hv", "$qm", "$q1", "$q2", "$q3", "$q4", "$q5", "$full", "$seen", "$ss" })
+        ins.CommandText = @"INSERT INTO files(has_id, vol, fid_lo, fid_hi, path, path_key, size, mtime, ctime, sampling_ver, hash_ver, qmask, q1, q2, q3, q4, q5, full, seen, sample_size, creation)
+                            VALUES($hid, $vol, $lo, $hi, $path, $pk, $size, $mt, $ct, $sv, $hv, $qm, $q1, $q2, $q3, $q4, $q5, $full, $seen, $ss, $creation);";
+        foreach (var n in new[] { "$hid", "$vol", "$lo", "$hi", "$path", "$pk", "$size", "$mt", "$ct", "$sv", "$hv", "$qm", "$q1", "$q2", "$q3", "$q4", "$q5", "$full", "$seen", "$ss", "$creation" })
             ins.Parameters.Add(new SqliteParameter(n, null));
         long today = Today();
 
@@ -215,6 +216,7 @@ public sealed class ScanCache : IDisposable
             p[17].Value = (object?)e.FullHash ?? DBNull.Value;
             p[18].Value = today;
             p[19].Value = _sampleSize;
+            p[20].Value = k.CreationTicks;
             ins.ExecuteNonQuery();
         }
         tx.Commit();

@@ -37,13 +37,18 @@ public sealed unsafe class WindowsFileSystem : FileSystemBase, IUsnSource, IEnum
             string key = Path.GetPathRoot(dir) ?? dir;
             if (!_extdUnsupported.ContainsKey(key))
             {
-                var st = EnumerateExtd(dir, handler, ct, out error, out bool unsupported);
-                if (!unsupported)
+                bool unsupported = false;
+                FileStatus Fast(DirEntryHandler emit, out string? err)
                 {
-                    Interlocked.Increment(ref _fastDirs);
-                    return st;
+                    var status = EnumerateExtd(dir, emit, ct, out err, out unsupported);
+                    return unsupported ? FileStatus.Unsupported : status;
                 }
-                _extdUnsupported.TryAdd(key, true);
+                FileStatus Slow(DirEntryHandler emit, out string? err) => EnumerateWin32(dir, emit, ct, out err);
+                var st = DirectoryEnumerationFallback.Run(Fast, Slow, handler, ct, out bool fallback, out error);
+                if (fallback) Interlocked.Increment(ref _fallbackDirs);
+                else Interlocked.Increment(ref _fastDirs);
+                if (unsupported) _extdUnsupported.TryAdd(key, true);
+                return st;
             }
         }
         Interlocked.Increment(ref _fallbackDirs);
@@ -53,8 +58,8 @@ public sealed unsafe class WindowsFileSystem : FileSystemBase, IUsnSource, IEnum
     /// <summary>
     /// Optimised backend (ТЗ §4): GetFileInformationByHandleEx(FileIdExtdDirectoryInfo) returns names,
     /// sizes, allocation, attributes, reparse tags, timestamps and 128-bit FileIds in batches, so the
-    /// hard-link stage does not have to open every candidate file. Any unsupported/error result makes
-    /// the caller fall back to FindFirstFileExW; nothing is reported to the handler before that decision.
+    /// scanner receives compact metadata in batches. Any unsupported/error result makes
+    /// the caller retry with FindFirstFileExW, deduplicating entries already reported.
     /// </summary>
     private FileStatus EnumerateExtd(string dir, DirEntryHandler handler, CancellationToken ct, out string? error, out bool unsupported)
     {
@@ -230,7 +235,7 @@ public sealed unsafe class WindowsFileSystem : FileSystemBase, IUsnSource, IEnum
             vol = idInfo.VolumeSerialNumber;
             lo = idInfo.FileIdLow;
             hi = idInfo.FileIdHigh;
-            if ((lo != 0 || hi != 0) && !(lo == ulong.MaxValue && hi == ulong.MaxValue))
+            if (vol != 0 && (lo != 0 || hi != 0) && !(lo == ulong.MaxValue && hi == ulong.MaxValue))
                 return true;
         }
         Native.BY_HANDLE_FILE_INFORMATION bhi;
@@ -239,7 +244,7 @@ public sealed unsafe class WindowsFileSystem : FileSystemBase, IUsnSource, IEnum
             vol = bhi.dwVolumeSerialNumber;
             lo = ((ulong)bhi.nFileIndexHigh << 32) | bhi.nFileIndexLow;
             hi = 0;
-            if (lo != 0 && lo != ulong.MaxValue)
+            if (vol != 0 && lo != 0 && lo != ulong.MaxValue)
                 return true;
         }
         vol = lo = hi = 0;
@@ -267,6 +272,7 @@ public sealed unsafe class WindowsFileSystem : FileSystemBase, IUsnSource, IEnum
         {
             identity.LastWriteTicks = basic.LastWriteTime;
             identity.ChangeTicks = basic.ChangeTime;
+            identity.CreationTicks = basic.CreationTime;
         }
         if (hasBasic && (basic.FileAttributes & (FileAttr.Compressed | FileAttr.SparseFile)) != 0)
         {
@@ -301,7 +307,10 @@ public sealed unsafe class WindowsFileSystem : FileSystemBase, IUsnSource, IEnum
         s.Size = std.EndOfFile;
         s.LastWriteTicks = basic.LastWriteTime;
         s.ChangeTicks = basic.ChangeTime;
-        if (TryGetId(handle, out _, out var lo, out var hi)) { s.FileIdLow = lo; s.FileIdHigh = hi; }
+        s.CreationTicks = basic.CreationTime;
+        s.LinkCount = std.NumberOfLinks;
+        s.AllocatedSize = std.AllocationSize;
+        if (TryGetId(handle, out var vol, out var lo, out var hi)) { s.VolumeSerial = vol; s.FileIdLow = lo; s.FileIdHigh = hi; }
         return true;
     }
 
@@ -514,17 +523,19 @@ public sealed unsafe class WindowsFileSystem : FileSystemBase, IUsnSource, IEnum
                     {
                         byte* rec = buf + off;
                         uint len = *(uint*)rec;
-                        if (len == 0 || off + len > got) break;
+                        if (len < 8 || len > got - off) return false;
                         ushort major = *(ushort*)(rec + 4);
-                        if (major == 2)
+                        if (major == 2 && len >= 60)
                             changed.Add((*(ulong*)(rec + 8), 0));
-                        else if (major == 3)
+                        else if (major == 3 && len >= 76)
                             changed.Add((*(ulong*)(rec + 8), *(ulong*)(rec + 16)));
-                        else if (major == 4)
+                        else if (major == 4 && len >= 64)
                             changed.Add((*(ulong*)(rec + 8), *(ulong*)(rec + 16)));
+                        else return false;
                         off += len;
                     }
-                    if (next <= usn) break;   // nothing more available
+                    if (off != got) return false;
+                    if (next <= usn) return false; // The requested journal interval was not fully covered.
                     usn = next;
                 }
                 return true;

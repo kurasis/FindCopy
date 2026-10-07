@@ -86,6 +86,7 @@ public struct FileIdentity
     public long Size;
     public long LastWriteTicks;  // 0 unknown
     public long ChangeTicks;     // 0 unknown
+    public long CreationTicks;
 }
 
 /// <summary>Metadata snapshot used to detect a file changing under us (ТЗ §12).</summary>
@@ -96,9 +97,16 @@ public struct MetaSnapshot : IEquatable<MetaSnapshot>
     public long ChangeTicks;
     public ulong FileIdLow;
     public ulong FileIdHigh;
+    public ulong VolumeSerial;
+    public long CreationTicks;
+    public long AllocatedSize;
+    public uint LinkCount;
+
+    public readonly bool HasIdentity => VolumeSerial != 0 && (FileIdLow != 0 || FileIdHigh != 0) && !(FileIdLow == ulong.MaxValue && FileIdHigh == ulong.MaxValue);
 
     public readonly bool Equals(MetaSnapshot o) =>
         Size == o.Size && LastWriteTicks == o.LastWriteTicks && ChangeTicks == o.ChangeTicks &&
+        CreationTicks == o.CreationTicks && VolumeSerial == o.VolumeSerial &&
         FileIdLow == o.FileIdLow && FileIdHigh == o.FileIdHigh;
 
     public override readonly bool Equals(object? obj) => obj is MetaSnapshot m && Equals(m);

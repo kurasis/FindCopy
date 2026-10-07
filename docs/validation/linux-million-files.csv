@@ -1,0 +1,2 @@
+time;scenario;run;threshold_kib;readers;buffer_kib;files;elapsed_s;files_per_s;enum_files_per_s;bytes_read;mb_per_s;cpu_s;peak_scan_ram_mb;cache_hit_rate;read_amplification;groups;storage;sample_kib;enum_backend;skipped;errors;changed
+2026-10-07T08:20:21;A;nocache;1024;0;1024;1000000;2.148;465648;509651;0;0.0;2.51;315;0.0;0.000000;0;Unknown storage;64;Auto;0;0;0

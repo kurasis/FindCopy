@@ -43,6 +43,15 @@ public sealed class Tuning
     /// <summary>Version of the deterministic sampling scheme (stored with any future cache).</summary>
     public const int SamplingSchemeVersion = 1;
 
+    public void Validate()
+    {
+        if (SmallFileThreshold < 0 || SampleSize <= 0 || SampleSize > (16 << 20) ||
+            StreamBufferSize <= 0 || StreamBufferSize > (16 << 20) || MiddleSampleMinSize < 0 || QuarterSamplesMinSize < 0 || CpuBudget <= 0 ||
+            new[] { FullReadersHdd, FullReadersSsd, FullReadersNvme, FullReadersNvmeStart, FullReadersNetwork,
+                FullReadersUnknown, QuickReadersHdd, QuickReadersSsd, QuickReadersNvme, QuickReadersNetwork, QuickReadersUnknown }.Any(n => n <= 0))
+            throw new ArgumentOutOfRangeException(nameof(Tuning), "Sizes and worker budgets must be positive and bounded");
+    }
+
     public static Tuning Default { get; } = new();
 
     public int FullReaders(StorageKind k) => k switch
