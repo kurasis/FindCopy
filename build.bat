@@ -12,9 +12,11 @@ cd /d "%~dp0"
 
 where dotnet >nul 2>nul
 if errorlevel 1 goto :nosdk
+if not errorlevel 0 goto :nosdk
 rem Resolve the exact SDK required by global.json, rather than accepting any installed SDK.
 dotnet --version >nul 2>nul
 if errorlevel 1 goto :nosdk
+if not errorlevel 0 goto :nosdk
 
 echo.
 echo === FindCopy: build ===
@@ -29,30 +31,35 @@ if /i "%~1"=="test" (
     echo TESTS FAILED. Build stopped.
     goto :fail
   )
+  if not errorlevel 0 goto :fail
   dotnet run -c Release --project tests\FindCopy.Audit\FindCopy.Audit.csproj
   if errorlevel 1 (
     echo.
     echo ACCEPTANCE CHECKS FAILED. Build stopped.
     goto :fail
   )
+  if not errorlevel 0 goto :fail
   dotnet run -c Release --project tests\FindCopy.UiTests\FindCopy.UiTests.csproj -- ui-test-artifacts
   if errorlevel 1 (
     echo.
     echo UI CHECKS FAILED. Build stopped.
     goto :fail
   )
+  if not errorlevel 0 goto :fail
 )
 
 echo.
 echo === Publish FindCopy.exe ===
 dotnet publish src\FindCopy.App\FindCopy.App.csproj -c Release -o publish
 if errorlevel 1 goto :fail
+if not errorlevel 0 goto :fail
 
 if /i "%~1"=="bench" (
   echo.
   echo === Benchmark ===
   dotnet publish tools\FindCopy.Bench\FindCopy.Bench.csproj -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:DebugType=none -o publish\bench
   if errorlevel 1 goto :fail
+  if not errorlevel 0 goto :fail
 )
 
 echo.
