@@ -77,6 +77,8 @@ static class WindowsAcceptanceTests
             using var cloud = new CloudFixture(d); cloud.Connect();
             var r = new ScanController().RunAsync(new ScanOptions { Roots = new[] { d }, IncludeOnlineOnlyFiles = true,
                 ExactVerification = true }, default).GetAwaiter().GetResult();
+            Console.WriteLine($"CLOUD_DOWNLOAD: fetches={cloud.Fetches}; groups={r.Groups.Count}; unchecked={r.HasUncheckedFiles}; errors={r.Counters.ErrorFiles}; changed={r.Counters.ChangedFiles}; content={r.Counters.ContentBytesRead}; issues=" +
+                string.Join(",", r.IssueCounts.Select(x => x.Key + "=" + x.Value)));
             Require(cloud.Fetches >= 2 && cloud.CallbackErrors.Count == 0 && !r.HasUncheckedFiles &&
                 r.Groups.Count == 1 && r.Groups[0].Verification == VerificationState.ExactMatch,
                 "provider-backed online scan: " + string.Join("; ", cloud.CallbackErrors));

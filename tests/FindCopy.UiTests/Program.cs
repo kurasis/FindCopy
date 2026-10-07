@@ -160,13 +160,19 @@ internal static class Program
                             GetWindowThreadProcessId(dialog, out uint process);
                             if (process == Environment.ProcessId)
                             {
+                                string captured = "";
                                 EnumChildWindows(dialog, (child, _) =>
                                 {
                                     var text = new StringBuilder(4096); GetWindowTextW(child, text, text.Capacity);
-                                    dialogText += text + " "; return true;
+                                    captured += text + " "; return true;
                                 }, IntPtr.Zero);
-                                SendMessageW(dialog, 0x0111 /* WM_COMMAND */, new IntPtr(7) /* IDNO */, IntPtr.Zero);
-                                dismissed = true; return;
+                                // A native dialog's HWND can appear before its warning text is initialized.
+                                if (captured.Contains("скачаны") && captured.Contains("место на диске"))
+                                {
+                                    dialogText = captured;
+                                    SendMessageW(dialog, 0x0111 /* WM_COMMAND */, new IntPtr(7) /* IDNO */, IntPtr.Zero);
+                                    dismissed = true; return;
+                                }
                             }
                         }
                         Thread.Sleep(20);
@@ -174,7 +180,8 @@ internal static class Program
                 }) { IsBackground = true };
                 dismiss.Start(); Control<CheckBox>(window, "CloudBox").IsChecked = true; dismiss.Join();
                 Require(dismissed && Control<CheckBox>(window, "CloudBox").IsChecked == false &&
-                    dialogText.Contains("скачаны") && dialogText.Contains("место на диске"), "cloud warning/decline flow");
+                    dialogText.Contains("скачаны") && dialogText.Contains("место на диске"),
+                    $"cloud warning/decline flow; dismissed={dismissed}; checked={Control<CheckBox>(window, "CloudBox").IsChecked}; text={dialogText}");
                 return Task.CompletedTask;
             });
             await Test("UI11 deletion controls remain visible at minimum window width", async () =>
