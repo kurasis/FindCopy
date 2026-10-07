@@ -25,11 +25,26 @@ internal static class PublishedAppAcceptance
                     if (pid != processId) return true;
                     var title = new StringBuilder(256); GetWindowTextW(handle, title, title.Capacity);
                     // Posting avoids blocking the responder while a second modal dialog opens.
-                    int button = title.ToString() switch { "Подтвердите удаление" => 6, "Удаление" => 1, _ => 0 };
-                    if (button != 0)
+                    IntPtr button = IntPtr.Zero;
+                    if (title.ToString() == "Подтвердите удаление") button = GetDlgItem(handle, 6);
+                    if (title.ToString() == "Удаление")
                     {
-                        bool posted = PostMessageW(handle, 0x0111, new IntPtr(button), GetDlgItem(handle, button));
-                        if (reported.Add(handle)) Console.WriteLine($"PUBLISHED_DIALOG: {title}, posted={posted}");
+                        var buttons = new List<IntPtr>();
+                        EnumChildWindows(handle, (child, _) =>
+                        {
+                            var cls = new StringBuilder(64); GetClassNameW(child, cls, cls.Capacity);
+                            if (cls.ToString().Equals("Button", StringComparison.OrdinalIgnoreCase)) buttons.Add(child);
+                            return true;
+                        }, IntPtr.Zero);
+                        // An information box's only button can have IDCANCEL rather than IDOK on Windows.
+                        // Refuse multi-button dialogs here: no automatic permanent-delete fallback.
+                        if (buttons.Count == 1) button = buttons[0];
+                    }
+                    if (button != IntPtr.Zero)
+                    {
+                        int id = GetDlgCtrlID(button);
+                        bool posted = PostMessageW(handle, 0x0111, new IntPtr(id), button);
+                        if (reported.Add(handle)) Console.WriteLine($"PUBLISHED_DIALOG: {title}, button={id}, posted={posted}");
                     }
                     return true;
                 }, IntPtr.Zero);
@@ -112,6 +127,8 @@ internal static class PublishedAppAcceptance
     [DllImport("user32.dll")] private static extern bool EnumChildWindows(IntPtr window, WindowCallback callback, IntPtr parameter);
     [DllImport("user32.dll")] private static extern bool IsWindowEnabled(IntPtr window);
     [DllImport("user32.dll")] private static extern IntPtr GetDlgItem(IntPtr window, int id);
+    [DllImport("user32.dll")] private static extern int GetDlgCtrlID(IntPtr window);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetClassNameW(IntPtr window, StringBuilder name, int length);
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowTextW(IntPtr window, StringBuilder text, int length);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern bool PostMessageW(IntPtr window, uint message, IntPtr wparam, IntPtr lparam);

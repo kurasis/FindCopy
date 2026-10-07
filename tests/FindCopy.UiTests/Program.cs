@@ -23,6 +23,7 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        Console.OutputEncoding = Encoding.UTF8;
         if (args.Contains("--require-standard-user"))
         {
             var identity = WindowsIdentity.GetCurrent();
