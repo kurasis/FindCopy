@@ -722,6 +722,8 @@ if (canStat)
 else { skipped += 3; Console.WriteLine("  SKIP C1-C3 require physical file identity"); }
 
 IncrementalTests.Run(Test, root);
+DirectoryBatchTests.Run(Test);
+BenchmarkSafetyTests.Run(Test, root);
 RecoveryTests.Run(Test, root);
 ResourceLifetimeTests.Run(Test, root);
 if (OperatingSystem.IsWindows())

@@ -572,24 +572,23 @@ public partial class MainWindow : Window
         catch (Exception ex) { MessageBox.Show(ex.Message, "FindCopy"); }
     }
 
-    /// <summary>Extensions Windows runs as programs or scripts when "opened".</summary>
-    private static readonly HashSet<string> RunnableExtensions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        ".exe", ".com", ".scr", ".pif", ".bat", ".cmd", ".msi", ".msp", ".msix", ".appx", ".appref-ms", ".application",
-        ".lnk", ".url", ".js", ".jse", ".vbs", ".vbe", ".wsf", ".wsh", ".ps1", ".psm1", ".hta", ".cpl", ".reg",
-        ".jar", ".py", ".pyw", ".inf", ".settingcontent-ms", ".library-ms", ".search-ms", ".scf", ".chm",
-    };
-
     private void OnOpenFile(object sender, RoutedEventArgs e)
     {
         if (FileOf(sender) is not { } f) return;
-        if (RunnableExtensions.Contains(Path.GetExtension(f.Path)) &&
-            MessageBox.Show(this,
-                "Этот файл — программа или сценарий. «Открыть» запустит его.\n\n" + f.Path + "\n\nЗапустить?",
-                "FindCopy", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes)
-            return;
-        try { Process.Start(new ProcessStartInfo(f.Path) { UseShellExecute = true }); }
+        try
+        {
+            OpenFileWithConfirmation(f.Path, path => MessageBox.Show(this,
+                "Открытие файла через Windows может запустить программу или активное содержимое.\n\n" + path + "\n\nОткрыть?",
+                "FindCopy", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) == MessageBoxResult.Yes,
+                start => Process.Start(start));
+        }
         catch (Exception ex) { MessageBox.Show(this, ex.Message, "FindCopy"); }
+    }
+
+    internal static void OpenFileWithConfirmation(string path, Func<string, bool> confirm, Action<ProcessStartInfo> launch)
+    {
+        // Associations can execute code for any extension, including user-defined document types.
+        if (confirm(path)) launch(new ProcessStartInfo(path) { UseShellExecute = true });
     }
 
     private void OnCopyPath(object sender, RoutedEventArgs e)

@@ -105,7 +105,7 @@ public sealed unsafe class WindowsFileSystem : FileSystemBase, IUsnInventorySour
                     return FileStatusText.FromWin32(err);
                 }
                 // Validate the whole batch before reporting anything from it.
-                if (!BatchLooksValid(buf, BufSize))
+                if (!DirectoryBatchValidator.IsValid(new ReadOnlySpan<byte>(buf, BufSize)))
                 {
                     if (first) { unsupported = true; return FileStatus.Ok; }
                     error = "Некорректный ответ FileIdExtdDirectoryInfo";
@@ -149,23 +149,6 @@ public sealed unsafe class WindowsFileSystem : FileSystemBase, IUsnInventorySour
         {
             NativeMemory.AlignedFree(buf);
         }
-    }
-
-    private static bool BatchLooksValid(byte* buf, int size)
-    {
-        uint off = 0;
-        for (int guard = 0; guard < 100_000; guard++)
-        {
-            if (off + 88 > size) return false;
-            byte* e = buf + off;
-            uint next = *(uint*)e;
-            int nameBytes = *(int*)(e + 60);
-            if (nameBytes <= 0 || (nameBytes & 1) != 0 || nameBytes > 255 * 2 * 2 || off + 88 + nameBytes > size) return false;
-            if (next == 0) return true;
-            if (next < 88 + nameBytes || (next & 7) != 0) return false;
-            off += next;
-        }
-        return false;
     }
 
     private FileStatus EnumerateWin32(string dir, DirEntryHandler handler, CancellationToken ct, out string? error)

@@ -7,5 +7,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/FindCopy.Core/FindCopy.Core.csproj" />
+    <ProjectReference Include="../../tools/FindCopy.Bench/FindCopy.Bench.csproj" />
   </ItemGroup>
 </Project>

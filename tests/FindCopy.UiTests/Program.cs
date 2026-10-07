@@ -68,6 +68,24 @@ internal static class Program
         Console.WriteLine($"DESKTOP_DPI: x={actualDpi.PixelsPerInchX}; y={actualDpi.PixelsPerInchY}");
         try
         {
+            await Test("UI security: every file association requires explicit confirmation", () =>
+            {
+                foreach (string name in new[] { "document.txt", "program.exe", "console.msc", "custom.unlisted" })
+                {
+                    string path = Path.Combine(root, name); int prompts = 0, launches = 0;
+                    MainWindow.OpenFileWithConfirmation(path, shown => { Require(shown == path, "wrong confirmation path"); prompts++; return false; },
+                        _ => launches++);
+                    Require(prompts == 1 && launches == 0, "cancelled opening launched an association");
+                    MainWindow.OpenFileWithConfirmation(path, _ => true, start =>
+                    {
+                        launches++;
+                        Require(start.FileName == path && start.UseShellExecute && start.Arguments.Length == 0,
+                            "confirmed opening changed the association or injected arguments");
+                    });
+                    Require(launches == 1, "confirmed association was not launched exactly once");
+                }
+                return Task.CompletedTask;
+            });
             string pair = Path.Combine(root, "pair"); Directory.CreateDirectory(pair);
             foreach (string name in new[] { "a", "b" })
             { using var stream = new FileStream(Path.Combine(pair, name), FileMode.CreateNew, FileAccess.Write); stream.SetLength(64L << 20); }

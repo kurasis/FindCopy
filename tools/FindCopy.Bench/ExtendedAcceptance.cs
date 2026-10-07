@@ -101,6 +101,10 @@ public static class ExtendedAcceptance
     {
         // These are fully written regular files: no SetLength, sparse, or virtual metadata.
         string root = Path.Combine(work, "dense-D");
+        CheckDenseDataset(root);
+        string marker = root + ".generated";
+        if (File.Exists(marker) && (File.GetAttributes(marker) & FileAttributes.ReparsePoint) != 0)
+            throw new IOException("Refusing a linked dense dataset marker");
         DatasetGenerator.Generate("D", root, 1, size, copies: 2);
         if (OperatingSystem.IsWindows()) Require(Directory.EnumerateFiles(root).All(p =>
             (File.GetAttributes(p) & (FileAttributes.SparseFile | FileAttributes.Compressed)) == 0), "dense files must be ordinary uncompressed files");
@@ -116,13 +120,32 @@ public static class ExtendedAcceptance
         var warm = Measure("dense", "warm", root, cache, 2);
         Require(warm.Groups.Count == 1 && warm.Counters.ContentBytesRead == 0, "warm dense cache should read no content");
         // Reuse the owned, fully written pair for scenario C without allocating another pair.
+        CheckDenseDataset(root);
         string second = Path.Combine(root, "d1.bin");
         using (var writer = File.OpenHandle(second, FileMode.Open, FileAccess.Write))
             RandomAccess.Write(writer, new byte[] { 255, 17, 88, 99 }, size / 2 + 100);
         var changed = Measure("dense", "middle-difference", root, cache, 2);
         Require(changed.Groups.Count == 0 && changed.Counters.FullHashBytesRead == 0 && changed.Counters.QuickHashBytesRead > 0,
             "middle difference must reject cached dense duplicates before full hashing");
-        Directory.Delete(root, recursive: true); File.Delete(root + ".generated");
+        CheckDenseDataset(root);
+        foreach (string name in new[] { "d0.bin", "d1.bin" }) File.Delete(Path.Combine(root, name));
+        // Nonrecursive removal preserves any unrelated file added after the last check.
+        Directory.Delete(root); File.Delete(marker);
+    }
+
+    private static void CheckDenseDataset(string root)
+    {
+        if (!Directory.Exists(root)) return;
+        if ((File.GetAttributes(root) & FileAttributes.ReparsePoint) != 0)
+            throw new IOException("Refusing a linked dense dataset directory");
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        foreach (string path in Directory.EnumerateFileSystemEntries(root))
+        {
+            string name = Path.GetFileName(path);
+            if ((!name.Equals("d0.bin", comparison) && !name.Equals("d1.bin", comparison)) ||
+                (File.GetAttributes(path) & (FileAttributes.Directory | FileAttributes.ReparsePoint)) != 0)
+                throw new IOException("Refusing an unexpected dense dataset entry: " + path);
+        }
     }
 
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]

@@ -16,6 +16,8 @@ is historical evidence.
 
 The [maintenance audit](docs/code-audit-2026-10-07.md) records resource/error-path
 fixes, regression coverage, and remaining verification limits.
+The [security audit](docs/security-audit-2026-10-07.md) records end-user risk
+findings, approved safety fixes, official dependency checks, and residual risks.
 
 ## Build and test
 
@@ -46,7 +48,7 @@ dotnet run -c Release --no-build --project tests/FindCopy.UiTests -- ui-test-art
 ```
 
 These are console runners; `dotnet test` does not execute their assertions.
-Linux reports **67 passed, 0 failed, 26 platform skips**, plus **17 acceptance
+Linux reports **74 passed, 0 failed, 26 platform skips**, plus **17 acceptance
 regressions passed**. Windows executes the native checks and WPF runner; CI
 publishes screenshots and `FindCopy.exe`. See the audit for the verified run.
 The solution includes all six projects.
