@@ -5,6 +5,10 @@ using Microsoft.Win32.SafeHandles;
 
 // Correctness tests from ТЗ §27. Runs on Linux (PortableFileSystem) and on Windows (WindowsFileSystem).
 int passed = 0, failed = 0, skipped = 0;
+Console.WriteLine($"RUNTIME: OS={RuntimeInformation.OSDescription}; OS architecture={RuntimeInformation.OSArchitecture}; process={RuntimeInformation.ProcessArchitecture}");
+string? expectedArchitecture = Environment.GetEnvironmentVariable("FINDCOPY_EXPECTED_ARCH");
+if (!string.IsNullOrEmpty(expectedArchitecture) && expectedArchitecture != RuntimeInformation.ProcessArchitecture.ToString())
+    throw new InvalidOperationException("Unexpected test process architecture: " + RuntimeInformation.ProcessArchitecture);
 var root = Path.Combine(Path.GetTempPath(), "findcopy-tests-" + Guid.NewGuid().ToString("N")[..8]);
 Directory.CreateDirectory(root);
 

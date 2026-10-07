@@ -24,6 +24,10 @@ internal static class Program
     private static int Main(string[] args)
     {
         Console.OutputEncoding = Encoding.UTF8;
+        Console.WriteLine($"RUNTIME: OS={RuntimeInformation.OSDescription}; OS architecture={RuntimeInformation.OSArchitecture}; process={RuntimeInformation.ProcessArchitecture}");
+        string? expectedArchitecture = Environment.GetEnvironmentVariable("FINDCOPY_EXPECTED_ARCH");
+        if (!string.IsNullOrEmpty(expectedArchitecture) && expectedArchitecture != RuntimeInformation.ProcessArchitecture.ToString())
+            throw new InvalidOperationException("Unexpected UI process architecture: " + RuntimeInformation.ProcessArchitecture);
         if (args.Contains("--require-standard-user"))
         {
             var identity = WindowsIdentity.GetCurrent();

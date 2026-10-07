@@ -13,10 +13,12 @@ permissions:
   contents: read
 jobs:
   native-scale:
-    runs-on: windows-latest
+    runs-on: windows-11-arm
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+      - name: Require Windows 11 ARM64 client and record host
+        run: ./tools/record-windows11-environment.ps1
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.425
@@ -51,10 +53,12 @@ jobs:
           name: FindCopy-native-ten-million
           path: ${{ env.FINDCOPY_SCALE_WORK }}/extended-acceptance.csv
   dense-files:
-    runs-on: windows-latest
+    runs-on: windows-11-arm
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
+      - name: Require Windows 11 ARM64 client and record host
+        run: ./tools/record-windows11-environment.ps1
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.425

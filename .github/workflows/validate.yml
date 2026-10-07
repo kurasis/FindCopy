@@ -10,23 +10,48 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            runtime: portable
+          - os: windows-11-arm
+            runtime: win-arm64
+            architecture: Arm64
+          - os: windows-11-arm
+            runtime: win-x64
+            architecture: X64
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 30
+    env:
+      FINDCOPY_EXPECTED_ARCH: ${{ matrix.architecture }}
     steps:
       - uses: actions/checkout@v4
+      - name: Require Windows 11 ARM64 client and record host
+        if: runner.os == 'Windows'
+        run: ./tools/record-windows11-environment.ps1
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.425
       - name: Build all projects
+        if: runner.os != 'Windows'
         run: dotnet build FindCopy.sln -c Release -m:2
+      - name: Build self-contained Windows binaries
+        if: runner.os == 'Windows'
+        run: dotnet build FindCopy.sln -c Release -m:2 -p:RuntimeIdentifier=${{ matrix.runtime }} -p:SelfContained=true
       - name: Baseline correctness suite
+        if: runner.os != 'Windows'
         run: dotnet run -c Release --no-build --project tests/FindCopy.Tests
+      - name: Windows baseline correctness suite
+        if: runner.os == 'Windows'
+        run: ./tests/FindCopy.Tests/bin/Release/net8.0/${{ matrix.runtime }}/FindCopy.Tests.exe
       - name: Acceptance regressions and large sparse-file cancellation
+        if: runner.os != 'Windows'
         run: dotnet run -c Release --no-build --project tests/FindCopy.Audit
+      - name: Windows acceptance regressions and large sparse-file cancellation
+        if: runner.os == 'Windows'
+        run: ./tests/FindCopy.Audit/bin/Release/net8.0/${{ matrix.runtime }}/FindCopy.Audit.exe
       - name: WPF interaction and recovery reporting
         if: runner.os == 'Windows'
-        run: dotnet run -c Release --no-build --project tests/FindCopy.UiTests -- ui-test-artifacts
+        run: ./tests/FindCopy.UiTests/bin/Release/net8.0-windows10.0.17763.0/${{ matrix.runtime }}/FindCopy.UiTests.exe ui-test-artifacts
       - name: Hardware acceptance wrapper smoke
         if: runner.os == 'Windows'
         shell: pwsh
@@ -35,26 +60,31 @@ jobs:
           $work = Join-Path $env:RUNNER_TEMP 'FindCopy wrapper results'
           New-Item -ItemType Directory -Path $dataset | Out-Null
           1..4 | ForEach-Object { [IO.File]::WriteAllText((Join-Path $dataset "file-$_.txt"), 'wrapper smoke') }
-          ./tools/run-hardware-acceptance.ps1 -Scenario E -Dataset $dataset -Work $work -Label 'Wrapper validation; not HDD acceptance' -OsCacheState unspecified
+          ./tools/run-hardware-acceptance.ps1 -Scenario E -Dataset $dataset -Work $work -Label 'Windows 11 wrapper validation; not HDD acceptance' -OsCacheState unspecified -RuntimeIdentifier ${{ matrix.runtime }}
       - uses: actions/upload-artifact@v4
         if: always() && runner.os == 'Windows'
         with:
-          name: FindCopy-ui-validation
+          name: FindCopy-ui-validation-${{ matrix.runtime }}
           path: ui-test-artifacts
       - name: Publish Windows desktop application
         if: runner.os == 'Windows'
-        run: dotnet publish src/FindCopy.App -c Release --no-restore -o publish
+        run: dotnet publish src/FindCopy.App -c Release --no-restore -p:RuntimeIdentifier=${{ matrix.runtime }} -p:SelfContained=true -o publish
       - name: Published desktop and WPF under a standard account
         if: runner.os == 'Windows'
         shell: pwsh
-        run: ./tools/test-standard-user.ps1 -PublishedExe publish/FindCopy.exe -UiRunner tests/FindCopy.UiTests/bin/Release/net8.0-windows10.0.17763.0/win-x64/FindCopy.UiTests.exe -OutputDirectory standard-ui-artifacts
+        run: ./tools/test-standard-user.ps1 -PublishedExe publish/FindCopy.exe -UiRunner tests/FindCopy.UiTests/bin/Release/net8.0-windows10.0.17763.0/${{ matrix.runtime }}/FindCopy.UiTests.exe -OutputDirectory standard-ui-artifacts
       - uses: actions/upload-artifact@v4
         if: always() && runner.os == 'Windows'
         with:
-          name: FindCopy-standard-user-validation
+          name: FindCopy-standard-user-validation-${{ matrix.runtime }}
           path: standard-ui-artifacts
       - uses: actions/upload-artifact@v4
         if: runner.os == 'Windows'
         with:
-          name: FindCopy-windows-x64
+          name: FindCopy-${{ matrix.runtime }}
           path: publish/FindCopy.exe
+      - uses: actions/upload-artifact@v4
+        if: always() && runner.os == 'Windows'
+        with:
+          name: FindCopy-host-${{ matrix.runtime }}
+          path: windows-environment.json
