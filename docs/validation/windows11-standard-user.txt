@@ -1,5 +1,5 @@
 RUNTIME: OS=Microsoft Windows 10.0.26200; OS architecture=Arm64; process=Arm64
-STANDARD_USER: runnervma5ngn\FindCopyAcceptance, administrator=false
+STANDARD_USER: runnervmyf5rf\FindCopyAcceptance, administrator=false
 DESKTOP_DPI: x=96; y=96
 PASS UI1 real search binds duplicate and empty-file results
 PASS UI2 selection controls retain one copy and clear selection
@@ -16,10 +16,15 @@ PASS UI13 recovery history restores an actual recycled file and disables repeats
 PASS UI14 pending restore cleanup remains available and completes through the history window
 RENDER_SCALE: exported 100/125/150/200 percent; does not change the desktop's actual DPI
 PASS UI15 minimum-width actions remain visible in 100/125/150/200 percent render exports
-RESULT_UI: groups=2000; selection/clear=0.082s
+RESULT_UI: groups=2000; selection/clear=0.078s
 PASS UI16 two thousand result groups support bulk selection and clearing
+CSV_SAVE_CONTROL: filename=File name:; button=Save; value=C:\a\FindCopy\FindCopy\standard-ui-artifacts\native-export.csv
+CSV_DIALOG_RESULT: accepted=True; path=C:\a\FindCopy\FindCopy\standard-ui-artifacts\native-export.csv
+CSV_WRITTEN: path=C:\a\FindCopy\FindCopy\standard-ui-artifacts\native-export.csv; exists=True
+CSV_EXPORT: native dialog; rows=6000; UTF-8 BOM; Unicode and semicolon paths preserved
+PASS UI17 native CSV export preserves six thousand Unicode paths and group metadata
 PUBLISHED_DIALOG: Подтвердите удаление, button=6, posted=True
 PUBLISHED_DIALOG: Удаление, button=2, posted=True
 PUBLISHED_DIALOG: Подтвердите восстановление, button=6, posted=True
 PASS UI12 published executable scans, recycles, and restores a selected copy
-16 passed, 0 failed
+17 passed, 0 failed

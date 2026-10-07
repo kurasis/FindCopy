@@ -56,10 +56,13 @@ is **96**. Raster exports at **100/125/150/200%** verify scaled rendering and
 minimum-width control visibility; they do not change the desktop's DPI or test
 a real monitor transition.
 
-The expanded run [37631437080](https://github.com/kurasis/FindCopy/actions/runs/37631437080)
-on source `aa74f5d` **completed successfully on all three matrix entries**,
-including **86 baseline cases without skips**, the larger SMB sweep and all
-desktop/published checks on both architectures.
+The complete final functional run
+[37642268416](https://github.com/kurasis/FindCopy/actions/runs/37642268416)
+on source `983ab350a6009c2ecbb451c0af4e6d2f5d174413` passed **all three matrix
+entries**. Native ARM64 and x64 emulation each passed **90 baseline cases with
+zero skips**, **17 audit regressions**, **16 WPF cases per theme**, **4 UNC
+cases and 54 complete H sweep rows**, and **17 non-admin WPF/published cases**.
+Linux passed **64 cases with 26 Windows-only skips**, plus **17 audit cases**.
 [ARM64 baseline](windows11-baseline-arm64.txt),
 [x64 baseline](windows11-baseline-x64.txt),
 [light WPF](windows11-light-ui.txt), [dark WPF](windows11-dark-ui.txt), and
@@ -67,13 +70,35 @@ desktop/published checks on both architectures.
 [Many results](ui/windows11/light/many-results.png),
 [minimum width](ui/windows11/light/minimum-width.png), and
 [200% raster export](ui/windows11/dark/render-200.png) preserve rendering evidence.
+
+UI17 clicks the actual export control, completes the native Save dialog, and
+parses all **6,000 rows** for **2,000 groups**, checking every Unicode/semicolon
+path, group, size, verification state and hash, plus the UTF-8 BOM. Direct
+character messages target only the owned edit HWND. UI Automation SetValue
+changed visible text without updating IFileDialog's selected filename, while
+unattended global keyboard input was not processed. A fresh standard profile
+can show an initial-folder information prompt (`runneradmin\Desktop` is
+inaccessible); the driver records and dismisses it, then saves into the writable
+artifact directory. The production export implementation uses the actual chosen
+path; its existing optional test notification hook enables diagnostic stdout.
+The full CSV is retained in each UI artifact rather than committing 6,000
+ephemeral fixture paths to the repository.
+
 W19 exposed a real close-time metadata update: the downloaded payload was stable,
 but Cloud Files changed `ChangeTime` after the last data handle closed. The fix
 checks the closed version, discards that read, refreshes only an opt-in cloud
 candidate with unchanged identity/size/creation/last-write, and reads it again
 once. Sample and full-hash stages both preserve their before/after checks.
-W21 requires the large-file sample/full/exact path; W22 rejects a write-time
-change during hydration. Non-cloud mutation and deletion guards remain intact.
+W19 repeats the real small-file hydration/exact scenario eight times per
+architecture. W21 requires the large-file sample/full/exact path; W22 rejects
+a write-time change during hydration. C1-C3 script late metadata over real reads
+to require full rehash/exact reads, reject changed payloads with otherwise
+preserved timestamps, and retain verified new fingerprints. W23 covers actual
+hydrated files under the default policy: first reconcile the hydration's USN
+writes (8,192 bytes reread, two invalidated entries, no new fetch), then require
+zero content bytes and two fingerprint hits on the subsequent warm scan.
+Journal checkpoints remain captured before content reads; advancing them past
+concurrent changes would weaken invalidation. Non-cloud mutation and deletion guards remain intact.
 The native consent test waits for the warning text before closing the dialog;
 its earlier x64 failure came from closing a newly created HWND before its child
 text was initialized.
@@ -93,7 +118,9 @@ The H sweep uses four fully written 8 MiB files, exceeding every swept small-fil
 threshold, and checks readers 1/2/4, thresholds 256/1024/4096 KiB and buffers
 1024/4096 KiB. Application cache off/fill/warm gives **54 rows** per architecture.
 The first green run used tiny sweep files; the separate correctness cases already
-used large files. The larger sweep fixture passed in run `37631437080`/source `aa74f5d`.
+used large files. The larger sweep fixture first passed in run `37631437080`/source `aa74f5d`;
+the linked raw rows now come from final run `37642268416`/source `983ab35`,
+including explicit completeness, parameter and cache-mode assertions.
 [ARM64 UNC tests](windows11-smb-arm64.txt), [x64 UNC tests](windows11-smb-x64.txt),
 [ARM64 sweep](windows11-smb-arm64.csv), and [x64 sweep](windows11-smb-x64.csv)
 preserve all rows. Every row has four files, one physical group, zero errors,
@@ -160,6 +187,42 @@ comparison, as recorded by the runner. Peak scan working set is sampled every
 10 ms, excluding generation. The largest dense-phase sample is **38.89 MiB**.
 This is a cloud volume result; no named physical device or cold-cache bandwidth
 is inferred from it.
+
+## Real five/ten-million-file NTFS trees
+
+Resource run `37626957289` **completed successfully**, including all three jobs.
+The native job uses the same source `3b8b771` and requires a readable NTFS USN
+journal. It generates actual independent sparse files of sizes 1..N bytes,
+in 10,000-file buckets with both Latin and Unicode directory names. These are
+not virtual metadata records. Unique sizes require zero engine content I/O.
+An independent duplicate pair is introduced in the changed/oracle phases.
+
+[Raw native CSV](windows11-native-scale.csv) retains all **18** rows: six smoke
+phases at 20,000 entries and six phases each at five and ten million.
+
+| Phase | Five million | Ten million |
+| --- | --- | --- |
+| Inventory fill | 20.599 s; 1738.30 MiB; 503 native directories | 61.131 s; 3430.93 MiB; 1003 native directories |
+| Warm inventory | 1.523 s; 1879.71 MiB; 0 native/503 reused | 3.309 s; 3492.48 MiB; 0 native/1003 reused |
+| Rename/add/delete | 1.453 s; 1915.98 MiB; 3 native/501 reused; one group | 3.348 s; 3237.30 MiB; 3 native/1001 reused; one group |
+| Fresh oracle | 2.927 s; 1797.39 MiB; 504 native; one matching group | 5.905 s; 3204.16 MiB; 1004 native; one matching group |
+| Cancel replay | 0.012 s; 1722.17 MiB; cancelled, no result | 0.054 s; 3107.38 MiB; cancelled, no result |
+| Warm after cancel | 1.371 s; 1916.54 MiB; 0 native/504 reused | 2.744 s; 3515.64 MiB; 0 native/1004 reused |
+
+The highest sampled scan working sets are **1916.54 MiB** and **3515.64 MiB**.
+Warm and recovered scans read no content. Changed/oracle scans read
+10,262,148 and 20,262,148 logical bytes respectively for the new pair, including
+samples, with no errors or changed files. The changed result must agree with
+a fresh scan. Cancellation cannot commit a partial inventory generation.
+
+Generation is excluded from elapsed scan time and scan RAM sampling. It took
+**9.6 s** for the 20,000-file smoke, **3076.3 s** to extend to five million and
+**2848.1 s** to extend to ten million. This fixture is expensive to regenerate.
+The discovered logical sizes are approximately 11.37/45.47 TiB of sparse EOF
+metadata, not fully written data. The fast hot oracle and zero-I/O warm phases
+do not establish physical disk bandwidth or universal latency improvement.
+The ten-million initial fill is slower than the five-million fill; preserve
+that observation along with the warm timings.
 
 ## External acceptance limits
 

@@ -63,18 +63,19 @@ and does not provide Windows mandatory share-mode guarantees.
 | Check | Outcome |
 | --- | --- |
 | Release solution build (six projects) | 0 warnings, 0 errors |
-| Linux baseline | 61 passed, 0 failed, 25 platform skips |
+| Linux baseline | 64 passed, 0 failed, 26 platform skips |
 | Linux acceptance regressions | 17 passed, 0 failed |
-| Windows 11 core/native baseline | 86 passed, 0 failed, 0 skipped; native ARM64 and x64 emulation |
+| Windows 11 core/native baseline | 90 passed, 0 failed, 0 skipped; native ARM64 and x64 emulation |
 | Windows acceptance regressions | 17 passed, 0 failed |
-| Windows 11 WPF interaction acceptance | 15 passed per theme setting, including recovery, pending cleanup, scaled exports and 2,000 result groups |
-| Ordinary-user Windows 11 WPF + published EXE | Non-admin token; 16 passed; actual scan/recycle/restore/keeper preservation and clean exit |
+| Windows 11 WPF interaction acceptance | 16 passed per theme setting, including recovery, pending cleanup, scaled exports, 2,000 result groups and native 6,000-row CSV export |
+| Ordinary-user Windows 11 WPF + published EXE | Non-admin token; 17 passed; actual scan/recycle/restore/keeper preservation and clean exit |
 | Windows PowerShell hardware wrapper | 18 configurations passed; paths with spaces |
 | Incremental inventory regressions | 19 passing cases included in baseline |
 | Actual Windows 11 SMB | 4 UNC cases; 54 H sweep/cache rows per architecture over fully written 8 MiB candidates |
 | Windows 11 connected Cloud Files | Default zero fetches; explicit small/large hydration and exact comparison; provider errors and concurrent writes rejected |
 | Windows 11 mixed workload | 135,250 paths, 5,000 groups, 250 aliases and deep Unicode paths; all six phases passed; peak 141.83 MiB |
 | Windows 11 fully written 50 GiB pair | All five hash/exact/cancel/resume/cache/mutation phases passed; peak 38.89 MiB |
+| Windows 11 real 5/10-million NTFS trees | All 18 smoke/scale phases passed; warm 1.523/3.309 s; peaks 1,916.54/3,515.64 MiB |
 
 Current client evidence is recorded in [Windows 11 acceptance](validation/windows11-acceptance.md).
 The following measurements predate that client run and retain their original
@@ -102,7 +103,7 @@ is in [Windows 11 acceptance](validation/windows11-acceptance.md). The baseline 
 real native USN reuse with zero warm directory enumeration/content I/O,
 long-path shell recycling, EFS access denial, connected Cloud Files hydration,
 and blocked writers throughout recycling of all hard-link aliases.
-The twenty-five Linux skips are Windows-only baseline/native acceptance cases.
+The twenty-six Linux skips are Windows-only baseline/native acceptance cases.
 Additional dense and real NTFS scale evidence, including reproduction and raw
 CSV, is in [extended acceptance](validation/extended-acceptance.md). The original
 inventory replay was slower than the hot no-cache oracle. Schema 5 avoids
