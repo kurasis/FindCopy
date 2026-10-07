@@ -184,8 +184,34 @@ internal static class Program
                 }
                 Screenshot(window, "minimum-width.png");
             });
+            await Test("UI13 recovery history restores an actual recycled file and disables repeats", async () =>
+            {
+                string directory = Path.Combine(root, "ui-recovery"); Directory.CreateDirectory(directory);
+                string original = Path.Combine(directory, "восстановить.txt"); File.WriteAllText(original, "UI restore bytes");
+                string history = Path.Combine(root, "ui-history");
+                var backend = new WindowsDeletionBackend(history); string staged;
+                using (var h = backend.OpenCandidate(original))
+                    Require(backend.StageForRecycle(h, original, out staged, out var error), "UI stage: " + error);
+                Require(backend.MoveToRecycleBin(staged, out var recycleError) && recycleError == null, "UI recycle: " + recycleError);
+                var recovery = new RecoveryWindow(history) { Owner = window, ConfirmationSink = _ => true,
+                    NotificationSink = (message, _) => throw new Exception(message) };
+                recovery.Show();
+                try
+                {
+                    var grid = Control<DataGrid>(recovery, "HistoryGrid");
+                    Require(grid.Items.Count == 1, "history binding"); grid.SelectedIndex = 0;
+                    Click(recovery, "RestoreButton");
+                    await Wait(() => recovery.FilesRestored == 1 && Control<Button>(recovery, "RefreshButton").IsEnabled);
+                    Require(File.ReadAllText(original) == "UI restore bytes" &&
+                        Control<TextBlock>(recovery, "StatusText").Text.Contains("Файл восстановлен"), "UI restore result");
+                    grid.SelectedIndex = 0;
+                    Require(!Control<Button>(recovery, "RestoreButton").IsEnabled, "repeat restore enabled");
+                    Screenshot(recovery, "restored-history.png");
+                }
+                finally { recovery.Close(); }
+            });
             if (_published != null)
-                await Test("UI12 published executable scans and actually recycles a selected copy", async () =>
+                await Test("UI12 published executable scans, recycles, and restores a selected copy", async () =>
                 {
                     await Task.Run(() => PublishedAppAcceptance.Run(_published, Path.Combine(root, "published-pair")));
                 });

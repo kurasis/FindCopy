@@ -26,7 +26,7 @@ internal static class PublishedAppAcceptance
                     var title = new StringBuilder(256); GetWindowTextW(handle, title, title.Capacity);
                     // Posting avoids blocking the responder while a second modal dialog opens.
                     IntPtr button = IntPtr.Zero;
-                    if (title.ToString() == "Подтвердите удаление") button = GetDlgItem(handle, 6);
+                    if (title.ToString() is "Подтвердите удаление" or "Подтвердите восстановление") button = GetDlgItem(handle, 6);
                     if (title.ToString() == "Удаление")
                     {
                         var buttons = new List<IntPtr>();
@@ -77,6 +77,43 @@ internal static class PublishedAppAcceptance
                 throw new Exception("Published recycling did not complete cleanly and preserve one copy");
             // The summary updates before the modal result dialog closes and controls are restored.
             Until(() => Element("SearchButton").Current.IsEnabled);
+            string removed = new[] { Path.Combine(root, "keeper"), Path.Combine(root, "extra") }.Single(p => !File.Exists(p));
+            var main = window;
+            Click("RecoveryButton");
+            Until(() =>
+            {
+                IntPtr history = IntPtr.Zero;
+                EnumWindows((handle, _) =>
+                {
+                    GetWindowThreadProcessId(handle, out uint pid);
+                    var title = new StringBuilder(256); GetWindowTextW(handle, title, title.Capacity);
+                    if (pid == processId && title.ToString() == "Восстановление удалённых файлов") history = handle;
+                    return true;
+                }, IntPtr.Zero);
+                if (history == IntPtr.Zero) return false;
+                window = AutomationElement.FromHandle(history);
+                return window.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "HistoryGrid")) != null;
+            });
+            AutomationElement? row = null;
+            Until(() =>
+            {
+                var rows = Element("HistoryGrid").FindAll(TreeScope.Descendants,
+                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.DataItem));
+                foreach (AutomationElement item in rows)
+                    if (item.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.NameProperty, removed)) != null)
+                    { row = item; return true; }
+                return false;
+            });
+            ((SelectionItemPattern)row!.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
+            Until(() => Element("RestoreButton").Current.IsEnabled);
+            Click("RestoreButton");
+            Until(() => Directory.EnumerateFiles(root).Count() == 2 && Element("RefreshButton").Current.IsEnabled &&
+                Element("StatusText").Current.Name.Contains("Файл восстановлен"));
+            if (Directory.EnumerateFiles(root).Any(p => File.ReadAllText(p) != "Published desktop acceptance bytes"))
+                throw new Exception("Published restoration changed file content");
+            ((WindowPattern)window!.GetCurrentPattern(WindowPattern.Pattern)).Close();
+            window = main;
+            Until(() => Element("SearchButton").Current.IsEnabled && Element("SummaryText").Current.Name.Contains("Запустите поиск заново"));
             ((WindowPattern)window!.GetCurrentPattern(WindowPattern.Pattern)).Close();
             if (!process.WaitForExit(10_000)) throw new Exception("Published application remained running after closing");
             if (process.ExitCode != 0) throw new Exception("Published application exited with code " + process.ExitCode);

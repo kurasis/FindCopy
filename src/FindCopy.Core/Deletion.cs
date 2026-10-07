@@ -217,6 +217,7 @@ public sealed class DuplicateDeleter
 
             // Retain the verified handle during permanent alias removal; writers remain excluded on Windows.
             string? err;
+            string? recycleNote = null;
             if (mode == DeleteMode.Permanent)
             {
                 if (!_backend.DeletePermanently(cand, f.Path, out err)) return No("Не удалось удалить: " + err);
@@ -234,6 +235,7 @@ public sealed class DuplicateDeleter
                 closed = true;
                 if (!_backend.MoveToRecycleBin(staged, out err))
                     return new DeleteOutcome(f.Path, true, "Проверенный файл сохранён в " + staged + ": " + err, 0);
+                recycleNote = err;
             }
 
             var aliasProblems = new List<string>();
@@ -265,7 +267,7 @@ public sealed class DuplicateDeleter
                         if (!ok) err = "Проверенный файл сохранён в " + staged + ": " + err;
                     }
                     else { ok = false; err = "Безопасное перемещение ссылки в корзину недоступно"; }
-                    if (!ok) aliasProblems.Add(alias + ": " + err);
+                    if (!ok || err != null) aliasProblems.Add(alias + ": " + err);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException) { aliasProblems.Add(alias + ": " + ex.Message); }
             }
@@ -274,8 +276,9 @@ public sealed class DuplicateDeleter
             bool lastLinkGone = mode == DeleteMode.Permanent && aliasProblems.Count == 0 &&
                 _fs.TryGetSnapshot(cand, f.Path, out var remainingObject) && remainingObject.LinkCount == 0;
             long freed = mode == DeleteMode.Permanent && lastLinkGone && before.AllocatedSize >= 0 ? before.AllocatedSize : 0;
+            if (recycleNote != null) aliasProblems.Add(recycleNote);
             string? note = aliasProblems.Count > 0
-                ? "Удалён, но некоторые ссылки оставлены: " + string.Join("; ", aliasProblems)
+                ? "Удалён с замечаниями: " + string.Join("; ", aliasProblems)
                 : mode == DeleteMode.Permanent && !lastLinkGone ? "Место не освобождено: остались внешние ссылки или их число неизвестно" : null;
             return new DeleteOutcome(f.Path, true, note, freed);
         }
@@ -351,6 +354,8 @@ public sealed class PortableDeletionBackend : IDeletionBackend
 [SupportedOSPlatform("windows")]
 public sealed unsafe class WindowsDeletionBackend : IDeletionBackend
 {
+    private readonly RecoveryJournal _recovery;
+    public WindowsDeletionBackend(string? recoveryDirectory = null) => _recovery = new RecoveryJournal(recoveryDirectory);
     private const uint GENERIC_READ = 0x80000000, DELETE = 0x00010000;
     private const uint FILE_SHARE_READ = 1, FILE_SHARE_DELETE = 4;
     private const uint OPEN_EXISTING = 3, FILE_FLAG_SEQUENTIAL_SCAN = 0x08000000;
@@ -429,7 +434,8 @@ public sealed unsafe class WindowsDeletionBackend : IDeletionBackend
         foreach (string parent in parents)
         {
             if (string.IsNullOrEmpty(parent) || !fs.TryGetDirectoryIdentity(parent, out var parentId) || parentId.Vol != verified.VolumeSerial) continue;
-            string directory = Path.Combine(parent, ".FindCopy-recycle-" + Guid.NewGuid().ToString("N"));
+            Guid recoveryId = Guid.NewGuid();
+            string directory = Path.Combine(parent, ".FindCopy-recycle-" + recoveryId.ToString("N"));
             string destination = Path.Combine(directory, filename);
             // Shell namespaces still impose path limits on some hosts. Handle-bound staging makes
             // a long source path safe without depending on those namespace parsing limits.
@@ -442,6 +448,8 @@ public sealed unsafe class WindowsDeletionBackend : IDeletionBackend
                     InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit, PropagationFlags.None, AccessControlType.Allow));
                 new DirectoryInfo(directory).Create(security);
                 File.WriteAllText(Path.Combine(directory, "original-path.txt"), originalPath);
+                _recovery.Save(new RecoveryEntry(recoveryId, Path.GetFullPath(originalPath), destination, null, null,
+                    verified, DateTime.UtcNow, RecoveryState.Staged));
                 string extended = WindowsFileSystem.ToExtendedPath(destination);
                 int offset = IntPtr.Size == 8 ? 20 : 12;
                 byte[] info = new byte[offset + extended.Length * 2];
@@ -452,6 +460,7 @@ public sealed unsafe class WindowsDeletionBackend : IDeletionBackend
                     if (!SetFileInformationByHandle(candidate, 3 /* FileRenameInfo */, buffer, (uint)info.Length))
                     {
                         error = new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error()).Message;
+                        _recovery.Remove(recoveryId);
                         File.Delete(Path.Combine(directory, "original-path.txt"));
                         Directory.Delete(directory);
                         continue;
@@ -460,7 +469,12 @@ public sealed unsafe class WindowsDeletionBackend : IDeletionBackend
                 stagedPath = destination;
                 return true;
             }
-            catch (Exception ex) { error = ex.Message; }
+            catch (Exception ex)
+            {
+                error = ex.Message;
+                try { _recovery.Remove(recoveryId); File.Delete(Path.Combine(directory, "original-path.txt")); Directory.Delete(directory); }
+                catch { /* The candidate has not moved; leave any unavailable empty staging directory. */ }
+            }
         }
         error ??= "Нет доступного короткого каталога на том же томе для безопасной корзины";
         return false;
@@ -468,10 +482,32 @@ public sealed unsafe class WindowsDeletionBackend : IDeletionBackend
 
     public bool MoveToRecycleBin(string path, out string? error)
     {
-        if (!WindowsRecycleBin.Move(path, out error)) return false;
+        string? parent = Path.GetDirectoryName(path);
+        string prefix = ".FindCopy-recycle-";
+        if (parent == null || !Path.GetFileName(parent).StartsWith(prefix, StringComparison.Ordinal) ||
+            !Guid.TryParseExact(Path.GetFileName(parent)[prefix.Length..], "N", out var id))
+        { error = "Не подтверждён каталог безопасной корзины"; return false; }
+        RecoveryEntry entry;
         try
         {
-            string? parent = Path.GetDirectoryName(path);
+            entry = _recovery.Get(id);
+            if (!string.Equals(entry.StagedPath, path, StringComparison.OrdinalIgnoreCase)) throw new IOException("Путь подготовки изменён");
+        }
+        catch (Exception ex) { error = "История восстановления недоступна: " + ex.Message; return false; }
+        if (!WindowsRecycleBin.Move(path, out var recycled, out error)) return false;
+        try
+        {
+            if (recycled == null) throw new IOException("Корзина не вернула путь файла");
+            WindowsRecoveryService.BinMetadata(recycled, path, entry.Version.Size, out string hash);
+            _recovery.Save(entry with { RecyclePath = recycled, MetadataHash = hash, State = RecoveryState.Recycled });
+        }
+        catch (Exception ex)
+        {
+            error = "Файл находится в корзине, но автоматическое восстановление недоступно: " + ex.Message;
+            return true;
+        }
+        try
+        {
             if (parent != null && Path.GetFileName(parent).StartsWith(".FindCopy-recycle-", StringComparison.Ordinal))
             {
                 File.Delete(Path.Combine(parent, "original-path.txt"));

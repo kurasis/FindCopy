@@ -81,6 +81,136 @@ static class WindowsAcceptanceTests
         });
     }
 
+    public static void RunRecovery(Action<string, Action> test, string root)
+    {
+        test("W6 long Unicode path recovery preserves identity and ADS without overwriting", () =>
+        {
+            string d = Path.Combine(root, "восстановление");
+            for (int i = 0; i < 7; i++) d = Path.Combine(d, new string((char)('a' + i), 45));
+            Directory.CreateDirectory(d);
+            string original = Path.Combine(d, new string('я', 140));
+            File.WriteAllText(original, "recoverable bytes"); File.WriteAllText(original + ":extra:$DATA", "alternate bytes");
+            File.WriteAllText(Path.Combine(d, "keeper"), "recoverable bytes");
+            var service = new WindowsRecoveryService(Path.Combine(root, "history-long"));
+            var backend = new WindowsDeletionBackend(service.Journal.DirectoryPath);
+            var fs = new WindowsFileSystem(); fs.GetIdentity(original, out var before);
+            var group = Scan(d).Groups.Single(); var file = group.Files.Single(f => f.Path == original);
+            var deleted = new DuplicateDeleter(backend: backend).Run(new[] { new DeleteRequest(group, new[] { file }) }, DeleteMode.RecycleBin).Single();
+            Require(deleted.Deleted && deleted.Reason == null, "recycling did not persist recovery: " + deleted.Reason);
+            var entry = service.Journal.Load(out var errors).Single();
+            Require(errors.Count == 0 && entry.State == RecoveryState.Recycled && File.Exists(entry.RecyclePath), "bin path missing");
+            File.WriteAllText(original, "replacement must survive");
+            var collision = service.Restore(entry.Id);
+            Require(!collision.Restored && File.ReadAllText(original) == "replacement must survive" && File.Exists(entry.RecyclePath), "destination overwritten");
+            File.Delete(original);
+            var result = new WindowsRecoveryService(service.Journal.DirectoryPath).Restore(entry.Id);
+            Require(result.Restored && result.Reason == null && File.ReadAllText(original) == "recoverable bytes" &&
+                File.ReadAllText(original + ":extra:$DATA") == "alternate bytes", "long-path restore: " + result.Reason);
+            fs.GetIdentity(original, out var after);
+            Require(before.FileIdLow == after.FileIdLow && before.FileIdHigh == after.FileIdHigh && before.VolumeSerial == after.VolumeSerial,
+                "restore copied content instead of restoring the same object");
+            Require(service.Journal.Get(entry.Id).State == RecoveryState.Restored && !File.Exists(entry.RecyclePath) &&
+                !service.Restore(entry.Id).Restored, "restore history or idempotence");
+        });
+        test("W7 staged recovery refuses missing parents and junction redirection", () =>
+        {
+            string d = Path.Combine(root, "restore-parent"); Directory.CreateDirectory(d);
+            string original = Path.Combine(d, "file"); File.WriteAllText(original, "staged bytes");
+            var service = new WindowsRecoveryService(Path.Combine(root, "history-stage"));
+            var backend = new WindowsDeletionBackend(service.Journal.DirectoryPath);
+            using (var h = backend.OpenCandidate(original)) Require(backend.StageForRecycle(h, original, out _, out var error), "stage: " + error);
+            var entry = service.Journal.Load(out _).Single();
+            Directory.Delete(d);
+            Require(!service.Restore(entry.Id).Restored && File.Exists(entry.StagedPath), "missing parent restored");
+            string redirected = Path.Combine(root, "redirected"); Directory.CreateDirectory(redirected); Native.Junction(redirected, d);
+            Require(!service.Restore(entry.Id).Restored && !File.Exists(Path.Combine(redirected, "file")), "junction followed");
+            Directory.Delete(d); Directory.CreateDirectory(d);
+            var result = service.Restore(entry.Id);
+            Require(result.Restored && File.ReadAllText(original) == "staged bytes" && !Directory.Exists(Path.GetDirectoryName(entry.StagedPath)),
+                "stage recovery: " + result.Reason);
+        });
+        test("W8 recovery refuses a modified staged object", () =>
+        {
+            string d = Path.Combine(root, "restore-mutated"); Directory.CreateDirectory(d);
+            string original = Path.Combine(d, "file"); File.WriteAllText(original, "before");
+            var service = new WindowsRecoveryService(Path.Combine(root, "history-mutation"));
+            var backend = new WindowsDeletionBackend(service.Journal.DirectoryPath);
+            using (var h = backend.OpenCandidate(original)) Require(backend.StageForRecycle(h, original, out _, out var error), "stage: " + error);
+            var entry = service.Journal.Load(out _).Single();
+            try
+            {
+                File.AppendAllText(entry.StagedPath, "modified");
+                Require(!service.Restore(entry.Id).Restored && !File.Exists(original) && File.ReadAllText(entry.StagedPath) == "beforemodified",
+                    "changed staged file moved");
+            }
+            finally { Directory.Delete(Path.GetDirectoryName(entry.StagedPath)!, true); }
+        });
+        test("W9 recovery refuses altered bin metadata and permits a safe retry", () =>
+        {
+            string d = Path.Combine(root, "restore-metadata"); Directory.CreateDirectory(d);
+            string original = Path.Combine(d, "file"); File.WriteAllText(original, "metadata bytes");
+            var service = new WindowsRecoveryService(Path.Combine(root, "history-metadata"));
+            var backend = new WindowsDeletionBackend(service.Journal.DirectoryPath);
+            string staged;
+            using (var h = backend.OpenCandidate(original)) Require(backend.StageForRecycle(h, original, out staged, out var error), "stage: " + error);
+            Require(backend.MoveToRecycleBin(staged, out var recycleError) && recycleError == null, "recycle: " + recycleError);
+            var entry = service.Journal.Load(out _).Single();
+            string metadata = Path.Combine(Path.GetDirectoryName(entry.RecyclePath)!, "$I" + Path.GetFileName(entry.RecyclePath)![2..]);
+            byte[] bytes = File.ReadAllBytes(metadata), changed = (byte[])bytes.Clone(); changed[16] ^= 1;
+            File.WriteAllBytes(metadata, changed);
+            Require(!service.Restore(entry.Id).Restored && !File.Exists(original) && File.Exists(entry.RecyclePath), "changed metadata accepted");
+            File.WriteAllBytes(metadata, bytes);
+            var result = service.Restore(entry.Id);
+            Require(result.Restored && result.Reason == null && !File.Exists(metadata), "retry or bin metadata cleanup: " + result.Reason);
+        });
+        test("W11 open writers block recovery until their handle closes", () =>
+        {
+            string d = Path.Combine(root, "restore-writer"); Directory.CreateDirectory(d);
+            string original = Path.Combine(d, "file"); File.WriteAllText(original, "writer bytes");
+            var service = new WindowsRecoveryService(Path.Combine(root, "history-writer"));
+            var backend = new WindowsDeletionBackend(service.Journal.DirectoryPath);
+            using (var h = backend.OpenCandidate(original)) Require(backend.StageForRecycle(h, original, out _, out var error), "stage: " + error);
+            var entry = service.Journal.Load(out _).Single();
+            using (var writer = File.OpenHandle(entry.StagedPath, FileMode.Open, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete))
+                Require(!service.Restore(entry.Id).Restored && File.Exists(entry.StagedPath), "writer was not excluded");
+            var result = service.Restore(entry.Id);
+            Require(result.Restored && result.Reason == null, "restore after writer closed: " + result.Reason);
+        });
+        test("W12 a same-size same-date replacement is never adopted for recovery", () =>
+        {
+            string d = Path.Combine(root, "restore-replacement"); Directory.CreateDirectory(d);
+            string original = Path.Combine(d, "file"); File.WriteAllText(original, "before");
+            var service = new WindowsRecoveryService(Path.Combine(root, "history-replacement"));
+            var backend = new WindowsDeletionBackend(service.Journal.DirectoryPath);
+            using (var h = backend.OpenCandidate(original)) Require(backend.StageForRecycle(h, original, out _, out var error), "stage: " + error);
+            var entry = service.Journal.Load(out _).Single();
+            try
+            {
+                File.Move(entry.StagedPath, entry.StagedPath + ".actual");
+                File.WriteAllText(entry.StagedPath, "before");
+                File.SetCreationTimeUtc(entry.StagedPath, DateTime.FromFileTimeUtc(entry.Version.CreationTicks));
+                File.SetLastWriteTimeUtc(entry.StagedPath, DateTime.FromFileTimeUtc(entry.Version.LastWriteTicks));
+                Require(!service.Restore(entry.Id).Restored && !File.Exists(original) && File.Exists(entry.StagedPath + ".actual"),
+                    "replacement at a recorded path was restored");
+            }
+            finally { Directory.Delete(Path.GetDirectoryName(entry.StagedPath)!, true); }
+        });
+        test("W10 independently recycled hard-link aliases restore their original paths", () =>
+        {
+            string d = Path.Combine(root, "restore-aliases"); Directory.CreateDirectory(d);
+            File.WriteAllText(Path.Combine(d, "keeper"), "alias bytes"); File.WriteAllText(Path.Combine(d, "copy"), "alias bytes");
+            Native.HardLink(Path.Combine(d, "copy"), Path.Combine(d, "alias"));
+            var service = new WindowsRecoveryService(Path.Combine(root, "history-aliases"));
+            var group = Scan(d).Groups.Single(); var file = group.Files.Single(f => f.HardLinkAliasCount == 1);
+            var result = new DuplicateDeleter(backend: new WindowsDeletionBackend(service.Journal.DirectoryPath))
+                .Run(new[] { new DeleteRequest(group, new[] { file }) }, DeleteMode.RecycleBin).Single();
+            Require(result.Deleted && result.Reason == null, "alias recycling: " + result.Reason);
+            var entries = service.Journal.Load(out _);
+            Require(entries.Count == 2 && entries.All(e => service.Restore(e.Id).Restored), "alias restore");
+            Require(Scan(d).Groups.Single().Files.Single(f => f.HardLinkAliasCount == 1).HardLinkAliasCount == 1, "hard links not preserved");
+        });
+    }
+
     private sealed class WriterProbe : IDeletionBackend
     {
         private readonly IDeletionBackend _inner = new WindowsDeletionBackend();

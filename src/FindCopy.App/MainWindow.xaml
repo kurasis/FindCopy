@@ -223,10 +223,11 @@
         <ColumnDefinition Width="Auto"/>
       </Grid.ColumnDefinitions>
       <TextBlock x:Name="SummaryText" VerticalAlignment="Center" TextWrapping="Wrap" Foreground="{StaticResource TextMain}" Margin="0,0,12,0"/>
-      <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+      <WrapPanel Grid.Column="1" VerticalAlignment="Center" MaxWidth="450">
+        <Button x:Name="RecoveryButton" Content="Восстановить…" Click="OnRecovery" Margin="0,0,8,4"/>
         <Button x:Name="ExpandButton" Content="Развернуть все" Click="OnExpandAll" IsEnabled="False" Margin="0,0,8,0"/>
         <Button x:Name="ExportButton" Content="Сохранить отчёт (CSV)…" Click="OnExport" IsEnabled="False"/>
-      </StackPanel>
+      </WrapPanel>
     </Grid>
   </Grid>
 </Window>

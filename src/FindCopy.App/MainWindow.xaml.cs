@@ -158,6 +158,7 @@ public partial class MainWindow : Window
         if (!busy) Progress.Value = _result != null ? 1 : 0;
         ExportButton.IsEnabled = !busy && _result != null && _result.Groups.Count > 0;
         SelectionBar.IsEnabled = !busy;
+        RecoveryButton.IsEnabled = !busy;
         ResultTree.IsEnabled = !busy;
         ExpandButton.IsEnabled = !busy && _groups.Count > 0;
     }
@@ -534,6 +535,19 @@ public partial class MainWindow : Window
     }
 
     // ------------------------------------------------------------ file actions
+
+    private void OnRecovery(object sender, RoutedEventArgs e)
+    {
+        if (_cts != null) return;
+        var window = new RecoveryWindow { Owner = this };
+        window.ShowDialog();
+        if (window.FilesRestored > 0)
+        {
+            ClearResults();
+            PhaseText.Text = "Файлы восстановлены";
+            SummaryText.Text = "Запустите поиск заново, чтобы обновить результаты после восстановления.";
+        }
+    }
 
     private static FileVM? FileOf(object sender) => (sender as FrameworkElement)?.DataContext as FileVM;
 

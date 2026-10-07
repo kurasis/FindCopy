@@ -7,10 +7,11 @@ namespace FindCopy.Core;
 [SupportedOSPlatform("windows")]
 internal static class WindowsRecycleBin
 {
-    internal static bool Move(string path, out string? error)
+    internal static bool Move(string path, out string? recyclePath, out string? error)
     {
         bool success = false;
         string? failure = null;
+        string? destination = null;
         var thread = new Thread(() =>
         {
             object? instance = null;
@@ -31,6 +32,7 @@ internal static class WindowsRecycleBin
                 Check(operation.PerformOperations(), "PerformOperations");
                 Check(operation.GetAnyOperationsAborted(out bool aborted), "GetAnyOperationsAborted");
                 if (aborted || !sink.Recycled) throw new IOException("Корзина не подтвердила перемещение файла");
+                destination = sink.Path;
                 success = !File.Exists(path);
                 if (!success) failure = "Файл остался в каталоге восстановления";
             }
@@ -45,6 +47,7 @@ internal static class WindowsRecycleBin
         thread.Start();
         thread.Join();
         error = failure;
+        recyclePath = destination;
         return success;
     }
 
@@ -53,6 +56,26 @@ internal static class WindowsRecycleBin
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = true)]
     private static extern int SHCreateItemFromParsingName(string path, IntPtr binding, ref Guid iid, out IntPtr item);
+
+    [ComImport, Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IShellItem
+    {
+        [PreserveSig] int BindToHandler(IntPtr context, ref Guid handler, ref Guid iid, out IntPtr result);
+        [PreserveSig] int GetParent(out IntPtr parent);
+        [PreserveSig] int GetDisplayName(uint kind, out IntPtr name);
+    }
+
+    private static string? ItemPath(IntPtr pointer)
+    {
+        object item = Marshal.GetObjectForIUnknown(pointer);
+        IntPtr name = IntPtr.Zero;
+        try
+        {
+            Check(((IShellItem)item).GetDisplayName(0x80058000 /* SIGDN_FILESYSPATH */, out name), "GetDisplayName");
+            return Marshal.PtrToStringUni(name);
+        }
+        finally { if (name != IntPtr.Zero) Marshal.FreeCoTaskMem(name); Marshal.ReleaseComObject(item); }
+    }
 
     [ComImport, Guid("947AAB5F-0A5C-4C13-B4D6-4BF7836FC9F8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     private interface IFileOperation
@@ -106,9 +129,14 @@ internal static class WindowsRecycleBin
     public sealed class RecycleSink : IFileOperationProgressSink
     {
         public bool Recycled;
+        public string? Path;
         public int PreDeleteItem(uint flags, IntPtr item) => (flags & 0x80) != 0 ? 0 : unchecked((int)0x80004004);
         public int PostDeleteItem(uint flags, IntPtr item, int hr, IntPtr created)
-        { Recycled = hr >= 0 && created != IntPtr.Zero; return 0; }
+        {
+            Recycled = hr >= 0 && created != IntPtr.Zero;
+            if (Recycled) try { Path = ItemPath(created); } catch { /* The journal retains the original staging path. */ }
+            return 0;
+        }
         public int StartOperations() => 0;
         public int FinishOperations(int hr) => 0;
         public int PreRenameItem(uint flags, IntPtr item, string name) => 0;
