@@ -72,6 +72,25 @@ privileged Windows helper, or destructive test ran on an end user's computer.
   It must never launch a process after refusal and must preserve association
   behavior after approval. Real potentially malicious files are never launched.
 
+### S-04: benchmark generation follows a marker link outside its dataset
+
+- **Location:** `tools/FindCopy.Bench/DatasetGenerator.cs:15–21`, `Generate`, and
+  line 77, `File.WriteAllText(marker, version)`; `Dense` calls that generator.
+- **Condition and impact:** an otherwise recognized acceptance workspace contains
+  a `dense-D.generated` file symlink and a fresh/empty dataset directory. Generation
+  follows that link and creates or overwrites its target with marker text, even
+  outside the dataset. This requires control of the optional tool's workspace,
+  or an accidental preexisting link; it does not provide privilege elevation or
+  affect the desktop application directly.
+- **Risk:** **medium**, owing to possible corruption of an unrelated accessible
+  file; limited to developer acceptance workspaces.
+- **Minimal fix applied, within the approved benchmark safety change:** inspect
+  the marker's `LinkTarget` and reparse attributes before generation. This does not
+  depend on platform-specific `File.Exists` behavior for dangling links.
+- **Evidence:** the original runner exited 0 while creating an external test file
+  through a dangling marker in the isolated reproduction. S8 rejects both missing
+  and existing targets and verifies no creation/overwrite occurs.
+
 ## Residual risks, hypotheses and recommendations
 
 These are **not confirmed compromises or proven end-user exploits**.
@@ -161,7 +180,7 @@ absence of an advisory is not proof that a dependency has no defects.
 
 Before fixes: portable baseline **67 passed, 26 Windows skips**; acceptance runner
 **17 passed**. After fixes: solution Release build, including Windows cross-build,
-**0 warnings/errors**; portable baseline **74 passed, 26 skips**; acceptance runner
+**0 warnings/errors**; portable baseline **75 passed, 26 skips**; acceptance runner
 **17 passed**; release-source tests **8 passed**; targeted Roslyn style verification
 (`IDE0005`, `IDE0051`, `IDE0052`, `IDE0059`) passed. These console runners execute
 real assertions; `dotnet test` is not a substitute.

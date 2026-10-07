@@ -51,6 +51,23 @@ static class BenchmarkSafetyTests
             Require(intercept.Injected && File.ReadAllText(document) == "late user data",
                 "late unrelated file was deleted or cleanup was reported as successful");
         });
+        test("S8 dense acceptance rejects marker links without creating or overwriting their targets", () =>
+        {
+            string work = OwnedWorkspace(root, "dense-marker-link"), target = Path.Combine(root, "unrelated-new-file.txt");
+            string dataset = Path.Combine(work, "dense-D"), marker = dataset + ".generated";
+            foreach (bool exists in new[] { false, true })
+            {
+                if (exists) File.WriteAllText(target, "unrelated existing data");
+                File.CreateSymbolicLink(marker, target);
+                try
+                {
+                    RunRejected(work, "Refusing a linked dataset marker");
+                    Require(!Directory.Exists(dataset) && (exists ? File.ReadAllText(target) == "unrelated existing data" : !File.Exists(target)),
+                        "generation followed the marker link");
+                }
+                finally { File.Delete(marker); }
+            }
+        });
     }
 
     private static string OwnedWorkspace(string root, string name)

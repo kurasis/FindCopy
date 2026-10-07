@@ -13,6 +13,9 @@ public static class DatasetGenerator
     {
         if (scale <= 0 || sizeOverride < 0) throw new ArgumentOutOfRangeException(nameof(scale));
         string marker = directory + ".generated";
+        if (new FileInfo(marker).LinkTarget != null ||
+            (File.Exists(marker) && (File.GetAttributes(marker) & FileAttributes.ReparsePoint) != 0))
+            throw new IOException("Refusing a linked dataset marker");
         if (countOverride < 0 || copies < 2) throw new ArgumentOutOfRangeException(nameof(countOverride));
         string version = $"v3:{scenario}:{scale}:{sizeOverride}:{countOverride}:{copies}:{sparse}";
         if (Directory.Exists(directory) && File.Exists(marker) && File.ReadAllText(marker) == version) return directory;

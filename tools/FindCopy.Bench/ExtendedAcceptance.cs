@@ -103,8 +103,6 @@ public static class ExtendedAcceptance
         string root = Path.Combine(work, "dense-D");
         CheckDenseDataset(root);
         string marker = root + ".generated";
-        if (File.Exists(marker) && (File.GetAttributes(marker) & FileAttributes.ReparsePoint) != 0)
-            throw new IOException("Refusing a linked dense dataset marker");
         DatasetGenerator.Generate("D", root, 1, size, copies: 2);
         if (OperatingSystem.IsWindows()) Require(Directory.EnumerateFiles(root).All(p =>
             (File.GetAttributes(p) & (FileAttributes.SparseFile | FileAttributes.Compressed)) == 0), "dense files must be ordinary uncompressed files");
