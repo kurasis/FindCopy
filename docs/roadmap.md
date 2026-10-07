@@ -15,6 +15,10 @@ recycling, keeper preservation, and clean shutdown under a non-admin account.
 Original-path restoration is now implemented through the deletion-history
 window, with conflict/identity/metadata checks and native no-replace renaming.
 The published executable's non-admin acceptance includes actual restoration.
+Pending restore intent now survives interruption after the data rename; the
+history command verifies the returned object and finishes guarded cleanup.
+Semantic inventory corruption is replaced atomically, enabling the following
+warm scan to reuse the repaired snapshot.
 [Recovery behavior](recovery.md) covers persistence and operational limits.
 
 Persistent inventory replay now retains unchanged SQLite blobs and passes

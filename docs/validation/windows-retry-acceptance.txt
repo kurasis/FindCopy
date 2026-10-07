@@ -1,0 +1,28 @@
+Source bbede45486541ad41dae5362498100fda7ee4554
+CI https://github.com/kurasis/FindCopy/actions/runs/37621870967
+Filtered Windows job output; omitted lines do not represent skipped tests.
+
+    0 Warning(s)
+    0 Error(s)
+  ok   I19 invalid listing names, flags, and metadata heal on the next scan
+  ok   R11 restore intent survives restart and old history defaults to no intent
+  ok   W14 a returned staged object completes pending cleanup after restart
+  ok   W15 returned bin objects reconcile before and after metadata cleanup
+  ok   W16 pending cleanup rejects replacement objects and altered bin metadata
+  ok   W17 pending intent resumes an unperformed rename without overwriting
+  ok   W18 an absent source and matching original require a recorded restore intent
+82 passed, 0 failed, 0 skipped
+PASS UI14 pending restore cleanup remains available and completes through the history window
+13 passed, 0 failed
+PASS UI14 pending restore cleanup remains available and completes through the history window
+14 passed, 0 failed
+
+Layout source a49d4a4
+CI https://github.com/kurasis/FindCopy/actions/runs/37622466999
+    0 Warning(s)
+    0 Error(s)
+82 passed, 0 failed, 0 skipped
+PASS UI14 pending restore cleanup remains available and completes through the history window
+13 passed, 0 failed
+PASS UI14 pending restore cleanup remains available and completes through the history window
+14 passed, 0 failed

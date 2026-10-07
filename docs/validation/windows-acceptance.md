@@ -94,9 +94,22 @@ account. [Recovery design](../recovery.md) describes the implementation and limi
 
 [CI run 37617699942](https://github.com/kurasis/FindCopy/actions/runs/37617699942)
 passed on source `b6dd8a3`, adding W13 for a shell move interrupted before its
-journal update and explicit unsupported/corrupt history handling. Windows is
-now 75/75 without skips; Linux is 59 passed with 16 Windows-only skips; audit
+journal update and explicit unsupported/corrupt history handling. Windows at that source passed
+75/75 without skips; Linux is 59 passed with 16 Windows-only skips; audit
 is 17/17 on both hosts. Regular WPF remains 12/12 and ordinary-user acceptance
 13/13. The filtered evidence and [standard-account output](windows-recovery-standard-user.txt)
 record this follow-up. [History screenshot](ui/restored-history.png) shows the
 completed restore and disabled repeat action.
+
+## Inventory repair and interrupted-restore cleanup
+
+[CI run 37621870967](https://github.com/kurasis/FindCopy/actions/runs/37621870967)
+passed source `bbede45`: Windows core/native 82/82 without skips, audit 17/17,
+regular WPF 13/13, ordinary-user WPF/published EXE 14/14; Linux 61 passed with
+21 Windows-only skips and audit 17/17. Builds have zero warnings/errors.
+[Detailed retry acceptance](retry-acceptance.md) records corruption healing,
+durable restore intent, guarded cleanup after a crash, and legacy compatibility.
+
+The [layout follow-up](https://github.com/kurasis/FindCopy/actions/runs/37622466999)
+passed source `a49d4a4` with the same counts. Original-path and pending-status
+columns remain readable at minimum width; UI14 exercises their actual layout.

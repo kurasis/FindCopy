@@ -61,14 +61,14 @@ and does not provide Windows mandatory share-mode guarantees.
 | Check | Outcome |
 | --- | --- |
 | Release solution build (six projects) | 0 warnings, 0 errors |
-| Linux baseline | 59 passed, 0 failed, 16 platform skips |
+| Linux baseline | 61 passed, 0 failed, 21 platform skips |
 | Linux acceptance regressions | 17 passed, 0 failed |
-| Windows core/native baseline | 75 passed, 0 failed, 0 skipped |
+| Windows core/native baseline | 82 passed, 0 failed, 0 skipped |
 | Windows acceptance regressions | 17 passed, 0 failed |
-| Windows WPF interaction acceptance | 12 passed, 0 failed, including actual original-path recovery |
-| Ordinary-user Windows WPF + published EXE | Non-admin token; 13 passed; actual scan/recycle/restore/keeper preservation and clean exit |
+| Windows WPF interaction acceptance | 13 passed, 0 failed, including actual recovery and pending cleanup |
+| Ordinary-user Windows WPF + published EXE | Non-admin token; 14 passed; actual scan/recycle/restore/keeper preservation and clean exit |
 | Windows PowerShell hardware wrapper | 18 configurations passed; paths with spaces |
-| Incremental inventory regressions | 18 passing cases included in baseline |
+| Incremental inventory regressions | 19 passing cases included in baseline |
 | Million physical sparse A files | 1,000,000 files; 0 content bytes; 0 groups; 2.421 s; 315.37 MiB sampled working set |
 | 100,000 physical sparse B files | 6,553,600,000 bytes = 64 KiB/file; 0 groups; 1.748 s; 86.63 MiB |
 | B fingerprint-cache warm run | 0 content bytes; 100% hits; 0.957 s; 117.00 MiB |
@@ -88,7 +88,7 @@ Windows runtime/UI evidence and run links are recorded in
 real native USN reuse with zero warm directory enumeration/content I/O,
 long-path shell recycling, EFS access denial, Cloud Files placeholders,
 and blocked writers throughout recycling of all hard-link aliases.
-The sixteen Linux skips are Windows-only baseline/native acceptance cases.
+The twenty-one Linux skips are Windows-only baseline/native acceptance cases.
 Additional dense and real NTFS scale evidence, including reproduction and raw
 CSV, is in [extended acceptance](validation/extended-acceptance.md). The original
 inventory replay was slower than the hot no-cache oracle. Schema 5 avoids
@@ -96,14 +96,15 @@ unchanged blob rewrites and per-entry name allocations; the new 5/10-million
 warm observations are 1.61/4.23 s. All phases and variability are preserved
 in the report; this is not a guarantee across devices and cache conditions.
 
-The 18 inventory regressions cover unchanged reuse, changed parents,
+The 19 inventory regressions cover unchanged reuse, changed parents,
 addition/deletion, aliases, subtree rename, journal reset/gap/unavailability,
 incomplete IDs, interrupted enumeration/cancellation, corruption,
 recursion switches, competing generations, atomic USN parsing, unchanged-blob
-write avoidance, checksummed malformed tails, and allocation-free Unicode replay.
+write avoidance, checksummed malformed tails, semantic corruption repair, and allocation-free Unicode replay.
 [Inventory design](incremental-inventory.md) explains fallback and transaction rules.
 Original-path restoration is implemented in the core and WPF history window;
-see [recovery behavior](recovery.md) and [runtime evidence](validation/windows-recovery-acceptance.txt).
+see [recovery behavior](recovery.md), [initial runtime evidence](validation/windows-recovery-acceptance.txt),
+and [interrupted-restore acceptance](validation/retry-acceptance.md).
 
 CSV evidence: [scale acceptance](validation/linux-scale-acceptance.csv) and
 [device harness smoke](validation/linux-device-harness-smoke.csv). Storage
