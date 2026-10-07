@@ -3,7 +3,7 @@ param([Parameter(Mandatory)][string]$UiRunner, [Parameter(Mandatory)][string]$Ou
 $ErrorActionPreference = 'Stop'
 $runner = (Resolve-Path -LiteralPath $UiRunner).Path
 $key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
-New-Item -Path $key -Force | Out-Null
+if (-not (Test-Path -LiteralPath $key)) { New-Item -Path $key -Force | Out-Null }
 $old = (Get-ItemProperty -Path $key -Name AppsUseLightTheme -ErrorAction SilentlyContinue).AppsUseLightTheme
 try {
     foreach ($theme in @('light', 'dark')) {
