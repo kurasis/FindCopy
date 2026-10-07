@@ -1,0 +1,400 @@
+Source: aa74f5d; GitHub Actions run 37631437080; job 112826462530
+RUNTIME: OS=Microsoft Windows 10.0.26200; OS architecture=Arm64; process=X64
+FindCopy engine tests, root: C:\Users\runneradmin\AppData\Local\Temp\findcopy-tests-66caa1db
+  ok   01 same bytes, different names/extensions/timestamps -> duplicate
+  ok   02 same size, different first bytes -> rejected at Q1, no full hash
+  ok   03 same size and start, different end -> rejected at Q2
+  ok   03b large files, same header/footer, different middle -> rejected at Q3
+  ok   04 identical samples, one byte differs outside samples -> full hash detects
+  ok   05 forced hash collision -> ExactVerifier separates files
+  ok   06 two hard links of one object -> not a duplicate
+  ok   07 hard link + real copy -> one redundant physical copy
+  ok   08 directory link loop -> no infinite recursion
+  ok   09 symlink to a file inside the tree -> not a second copy
+  ok   10 file modified during full hash -> CHANGED_DURING_SCAN
+  ok   11 file deleted during scan -> status, scan continues
+  ok   12 access denied -> scan continues
+  ok   13 sparse and regular file with same logical content -> duplicate
+  ok   14 NTFS compressed and uncompressed logical-equivalent files
+  ok   15 zero-byte files -> separate list, reclaimable 0
+  ok   16 Unicode paths
+  ok   17 paths longer than 260 chars
+  ok   18 many files with unique sizes -> zero content I/O
+  ok   19 online-only cloud file -> not read by default
+  ok   20 cancel during large file read -> clean stop
+  ok   21 non-recursive mode ignores subfolders
+  ok   22 system files are skipped
+  ok   23 overlapping roots are not scanned twice
+  ok   24 excluded (system) directories are not descended into
+  ok   25 cache: repeat scan reads no content, same result
+  ok   26 cache: changed file is re-hashed, never a false duplicate
+  ok   27 cache: damaged cache file is rebuilt
+  ok   28 cache: cancelled scan leaves a consistent cache
+  ok   29 USN journal: reported change invalidates cache entry; journal reset drops volume
+  ok   30 NVMe autotune path: concurrent full reads stay correct
+  ok   31 alternate streams mode: named streams must match too
+  ok   32 cache: changed sample size ignores cached quick hashes, keeps full hashes
+       (fast-path directories: 2, fallback: 0)
+  ok   33 enumeration backends agree (FileIdExtdDirectoryInfo vs FindFirstFileExW)
+  ok   D1 delete selected copies, keep one
+  ok   D2 never delete every copy of a group
+  ok   D3 file changed after the scan is not deleted
+  ok   D4 kept copy gone after the scan -> nothing deleted
+  ok   D5 Recycle Bin unavailable -> nothing deleted silently
+  ok   D6 deleting a copy also removes its hard links
+  ok   D7 same file under two paths is never deleted as its own duplicate
+  ok   D8 Recycle Bin mode on a fixed drive
+  ok   I1 unchanged inventory avoids directory enumeration and content reads
+  ok   I2 only modified parents are enumerated
+  ok   I3 creation and deletion update inventory membership
+  ok   I4 a changed hard link refreshes every cached alias parent
+  ok   I5 renamed directories refresh their descendant paths
+  ok   I6 journal replacement requires complete enumeration
+  ok   I7 journal gaps and failed interval reads require complete enumeration
+  ok   I8 unavailable journals use ordinary scanning
+  ok   I9 entries without bulk IDs are never reused
+  ok   I10 incomplete enumeration does not advance the inventory checkpoint
+  ok   I11 cancellation does not commit a partially staged inventory
+  ok   I12 damaged listing payloads fall back before emitting entries
+  ok   I13 switching recursion cannot reuse an incomplete subtree
+  ok   I14 a newer concurrent checkpoint cannot be overwritten
+  ok   I16 unchanged inventory advances checkpoint without rewriting blobs
+  ok   I17 checksummed malformed listings fall back without partial replay
+  ok   I19 invalid listing names, flags, and metadata heal on the next scan
+  ok   I18 inventory span codec preserves Unicode and avoids per-entry allocations
+  ok   I15 USN packets validate parent identities, bounds, and versions atomically
+  ok   R9 recovery journal survives restart and preserves file version
+  ok   R11 restore intent survives restart and old history defaults to no intent
+  ok   R10 malformed recovery history is reported without losing valid entries
+  ok   W1 native long-path verified recycling
+  ok   W2 native USN warm scan avoids unchanged directory enumeration
+  ok   W3 native EFS logical content and access denial
+  ok   W4 native Cloud Files placeholder is never hydrated by default
+CLOUD_BEFORE: online-a size=4096; write=134358546457509265; change=134358546457509265; creation=134358546457509265
+CLOUD_BEFORE: online-b size=4096; write=134358546460657038; change=134358546460657038; creation=134358546460657038
+CLOUD_DOWNLOAD: fetches=2; groups=1; unchecked=False; errors=0; changed=0; content=24576; issues=
+CLOUD_AFTER: online-a size=4096; write=134358546457509265; change=134358546460820913; creation=134358546457509265
+CLOUD_AFTER: online-b size=4096; write=134358546460657038; change=134358546462566919; creation=134358546460657038
+  ok   W19 explicit online inclusion fetches actual Cloud Files content
+  ok   W20 provider fetch failures are reported without false duplicate groups
+  ok   W21 large online candidates retry samples after hydration closes the handle
+  ok   W22 writes during cloud download cannot use the hydration metadata retry
+  ok   W5 writers remain blocked while the shell recycles all aliases
+  ok   W6 long Unicode path recovery preserves identity and ADS without overwriting
+  ok   W7 staged recovery refuses missing parents and junction redirection
+  ok   W8 recovery refuses a modified staged object
+  ok   W9 recovery refuses altered bin metadata and permits a safe retry
+  ok   W11 open writers block recovery until their handle closes
+  ok   W12 a same-size same-date replacement is never adopted for recovery
+  ok   W13 a shell move interrupted before journal update remains recoverable
+  ok   W14 a returned staged object completes pending cleanup after restart
+  ok   W15 returned bin objects reconcile before and after metadata cleanup
+  ok   W16 pending cleanup rejects replacement objects and altered bin metadata
+  ok   W17 pending intent resumes an unperformed rename without overwriting
+  ok   W18 an absent source and matching original require a recorded restore intent
+  ok   W10 independently recycled hard-link aliases restore their original paths
+
+86 passed, 0 failed, 0 skipped
+FindCopy engine tests, root: C:\Users\runneradmin\AppData\Local\Temp\findcopy-tests-08264480
+  ok   N1 SMB Unicode long paths and exact content groups
+  ok   N2 SMB hard links do not inflate physical copies or savings
+  ok   N3 SMB cache reuse and changed content work without USN inventory
+  ok   N4 SMB streaming cancellation preserves a usable cache
+4 passed, 0 failed, 0 skipped
+RUNTIME: OS=Microsoft Windows 10.0.26200; OS architecture=Arm64; process=X64
+H nocache: 4 files, 0.456s, 34,078,720 content bytes, 61 MiB, 1 groups, readers=1, threshold=256, buffer=1024
+H cache-fill: 4 files, 0.426s, 34,078,720 content bytes, 74 MiB, 1 groups, readers=1, threshold=256, buffer=1024
+H cache-warm: 4 files, 0.043s, 0 content bytes, 73 MiB, 1 groups, readers=1, threshold=256, buffer=1024
+H nocache: 4 files, 0.127s, 34,078,720 content bytes, 76 MiB, 1 groups, readers=1, threshold=256, buffer=4096
+H cache-fill: 4 files, 0.225s, 34,078,720 content bytes, 78 MiB, 1 groups, readers=1, threshold=256, buffer=4096
+H cache-warm: 4 files, 0.039s, 0 content bytes, 75 MiB, 1 groups, readers=1, threshold=256, buffer=4096
+H nocache: 4 files, 0.135s, 34,078,720 content bytes, 75 MiB, 1 groups, readers=1, threshold=1024, buffer=1024
+H cache-fill: 4 files, 0.232s, 34,078,720 content bytes, 78 MiB, 1 groups, readers=1, threshold=1024, buffer=1024
+H cache-warm: 4 files, 0.042s, 0 content bytes, 76 MiB, 1 groups, readers=1, threshold=1024, buffer=1024
+H nocache: 4 files, 0.147s, 34,078,720 content bytes, 81 MiB, 1 groups, readers=1, threshold=1024, buffer=4096
+H cache-fill: 4 files, 0.251s, 34,078,720 content bytes, 83 MiB, 1 groups, readers=1, threshold=1024, buffer=4096
+H cache-warm: 4 files, 0.035s, 0 content bytes, 78 MiB, 1 groups, readers=1, threshold=1024, buffer=4096
+H nocache: 4 files, 0.151s, 34,078,720 content bytes, 80 MiB, 1 groups, readers=1, threshold=4096, buffer=1024
+H cache-fill: 4 files, 0.255s, 34,078,720 content bytes, 84 MiB, 1 groups, readers=1, threshold=4096, buffer=1024
+H cache-warm: 4 files, 0.040s, 0 content bytes, 82 MiB, 1 groups, readers=1, threshold=4096, buffer=1024
+H nocache: 4 files, 0.173s, 34,078,720 content bytes, 87 MiB, 1 groups, readers=1, threshold=4096, buffer=4096
+H cache-fill: 4 files, 0.202s, 34,078,720 content bytes, 87 MiB, 1 groups, readers=1, threshold=4096, buffer=4096
+H cache-warm: 4 files, 0.036s, 0 content bytes, 83 MiB, 1 groups, readers=1, threshold=4096, buffer=4096
+H nocache: 4 files, 0.161s, 34,078,720 content bytes, 86 MiB, 1 groups, readers=2, threshold=256, buffer=1024
+H cache-fill: 4 files, 0.256s, 34,078,720 content bytes, 89 MiB, 1 groups, readers=2, threshold=256, buffer=1024
+H cache-warm: 4 files, 0.039s, 0 content bytes, 87 MiB, 1 groups, readers=2, threshold=256, buffer=1024
+H nocache: 4 files, 0.110s, 34,078,720 content bytes, 96 MiB, 1 groups, readers=2, threshold=256, buffer=4096
+H cache-fill: 4 files, 0.183s, 34,078,720 content bytes, 96 MiB, 1 groups, readers=2, threshold=256, buffer=4096
+H cache-warm: 4 files, 0.049s, 0 content bytes, 88 MiB, 1 groups, readers=2, threshold=256, buffer=4096
+H nocache: 4 files, 0.149s, 34,078,720 content bytes, 90 MiB, 1 groups, readers=2, threshold=1024, buffer=1024
+H cache-fill: 4 files, 0.219s, 34,078,720 content bytes, 91 MiB, 1 groups, readers=2, threshold=1024, buffer=1024
+H cache-warm: 4 files, 0.039s, 0 content bytes, 88 MiB, 1 groups, readers=2, threshold=1024, buffer=1024
+H nocache: 4 files, 0.118s, 34,078,720 content bytes, 96 MiB, 1 groups, readers=2, threshold=1024, buffer=4096
+H cache-fill: 4 files, 0.185s, 34,078,720 content bytes, 96 MiB, 1 groups, readers=2, threshold=1024, buffer=4096
+H cache-warm: 4 files, 0.055s, 0 content bytes, 88 MiB, 1 groups, readers=2, threshold=1024, buffer=4096
+H nocache: 4 files, 0.110s, 34,078,720 content bytes, 90 MiB, 1 groups, readers=2, threshold=4096, buffer=1024
+H cache-fill: 4 files, 0.186s, 34,078,720 content bytes, 90 MiB, 1 groups, readers=2, threshold=4096, buffer=1024
+H cache-warm: 4 files, 0.038s, 0 content bytes, 88 MiB, 1 groups, readers=2, threshold=4096, buffer=1024
+H nocache: 4 files, 0.106s, 34,078,720 content bytes, 96 MiB, 1 groups, readers=2, threshold=4096, buffer=4096
+H cache-fill: 4 files, 0.261s, 34,078,720 content bytes, 97 MiB, 1 groups, readers=2, threshold=4096, buffer=4096
+H cache-warm: 4 files, 0.041s, 0 content bytes, 90 MiB, 1 groups, readers=2, threshold=4096, buffer=4096
+H nocache: 4 files, 0.111s, 34,078,720 content bytes, 94 MiB, 1 groups, readers=4, threshold=256, buffer=1024
+H cache-fill: 4 files, 0.182s, 34,078,720 content bytes, 94 MiB, 1 groups, readers=4, threshold=256, buffer=1024
+H cache-warm: 4 files, 0.052s, 0 content bytes, 90 MiB, 1 groups, readers=4, threshold=256, buffer=1024
+H nocache: 4 files, 0.096s, 34,078,720 content bytes, 104 MiB, 1 groups, readers=4, threshold=256, buffer=4096
+H cache-fill: 4 files, 0.153s, 34,078,720 content bytes, 104 MiB, 1 groups, readers=4, threshold=256, buffer=4096
+H cache-warm: 4 files, 0.035s, 0 content bytes, 88 MiB, 1 groups, readers=4, threshold=256, buffer=4096
+H nocache: 4 files, 0.106s, 34,078,720 content bytes, 92 MiB, 1 groups, readers=4, threshold=1024, buffer=1024
+H cache-fill: 4 files, 0.156s, 34,078,720 content bytes, 93 MiB, 1 groups, readers=4, threshold=1024, buffer=1024
+H cache-warm: 4 files, 0.034s, 0 content bytes, 88 MiB, 1 groups, readers=4, threshold=1024, buffer=1024
+H nocache: 4 files, 0.090s, 34,078,720 content bytes, 104 MiB, 1 groups, readers=4, threshold=1024, buffer=4096
+H cache-fill: 4 files, 0.159s, 34,078,720 content bytes, 104 MiB, 1 groups, readers=4, threshold=1024, buffer=4096
+H cache-warm: 4 files, 0.035s, 0 content bytes, 88 MiB, 1 groups, readers=4, threshold=1024, buffer=4096
+H nocache: 4 files, 0.090s, 34,078,720 content bytes, 93 MiB, 1 groups, readers=4, threshold=4096, buffer=1024
+H cache-fill: 4 files, 0.169s, 34,078,720 content bytes, 92 MiB, 1 groups, readers=4, threshold=4096, buffer=1024
+H cache-warm: 4 files, 0.038s, 0 content bytes, 88 MiB, 1 groups, readers=4, threshold=4096, buffer=1024
+H nocache: 4 files, 0.104s, 34,078,720 content bytes, 104 MiB, 1 groups, readers=4, threshold=4096, buffer=4096
+H cache-fill: 4 files, 0.177s, 34,078,720 content bytes, 105 MiB, 1 groups, readers=4, threshold=4096, buffer=4096
+H cache-warm: 4 files, 0.039s, 0 content bytes, 88 MiB, 1 groups, readers=4, threshold=4096, buffer=4096
+Results: C:\a\FindCopy\FindCopy\smb-artifacts\bench-results-v3.csv
+No OS caches were evicted. Virtual/sparse measurements do not establish physical device throughput.
+##[group]Run actions/upload-artifact@v4
+with:
+  name: FindCopy-smb-win-x64
+  path: smb-artifacts
+  if-no-files-found: warn
+  compression-level: 6
+  overwrite: false
+  include-hidden-files: false
+env:
+  FINDCOPY_EXPECTED_ARCH: X64
+  DOTNET_ROOT: C:\a\_temp\FindCopy-dotnet-arm64
+  DOTNET_ROOT_ARM64: C:\a\_temp\FindCopy-dotnet-arm64
+##[endgroup]
+(node:1484) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+With the provided path, there will be 4 files uploaded
+Artifact name is valid!
+Root directory input is valid!
+Beginning upload of artifact content to blob storage
+(node:1484) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+Uploaded bytes 5923
+Finished uploading artifact content to blob storage!
+SHA256 digest of uploaded artifact zip is aeb58272cffedafa98404e210b3afc562db902da21e72838c57d38ac8242547f
+Finalizing artifact upload
+Artifact FindCopy-smb-win-x64.zip successfully finalized. Artifact ID 11486771341
+Artifact FindCopy-smb-win-x64 has been successfully uploaded! Final size is 5923 bytes. Artifact ID is 11486771341
+Artifact download URL: https://github.com/kurasis/FindCopy/actions/runs/37631437080/artifacts/11486771341
+##[group]Run $dataset = Join-Path $env:RUNNER_TEMP 'FindCopy wrapper data'
+[36;1m$dataset = Join-Path $env:RUNNER_TEMP 'FindCopy wrapper data'[0m
+[36;1m$work = Join-Path $env:RUNNER_TEMP 'FindCopy wrapper results'[0m
+[36;1mNew-Item -ItemType Directory -Path $dataset | Out-Null[0m
+[36;1m1..4 | ForEach-Object { [IO.File]::WriteAllText((Join-Path $dataset "file-$_.txt"), 'wrapper smoke') }[0m
+[36;1m./tools/run-hardware-acceptance.ps1 -Scenario E -Dataset $dataset -Work $work -Label 'Windows 11 wrapper validation; not HDD acceptance' -OsCacheState unspecified -RuntimeIdentifier win-x64[0m
+shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+env:
+  FINDCOPY_EXPECTED_ARCH: X64
+  DOTNET_ROOT: C:\a\_temp\FindCopy-dotnet-arm64
+  DOTNET_ROOT_ARM64: C:\a\_temp\FindCopy-dotnet-arm64
+##[endgroup]
+RUNTIME: OS=Microsoft Windows 10.0.26200; OS architecture=Arm64; process=X64
+E nocache: 4 files, 0.193s, 52 content bytes, 54 MiB, 1 groups, readers=1, threshold=256, buffer=1024
+E nocache: 4 files, 0.006s, 52 content bytes, 55 MiB, 1 groups, readers=1, threshold=256, buffer=4096
+E nocache: 4 files, 0.005s, 52 content bytes, 55 MiB, 1 groups, readers=1, threshold=1024, buffer=1024
+E nocache: 4 files, 0.005s, 52 content bytes, 55 MiB, 1 groups, readers=1, threshold=1024, buffer=4096
+E nocache: 4 files, 0.004s, 52 content bytes, 55 MiB, 1 groups, readers=1, threshold=4096, buffer=1024
+E nocache: 4 files, 0.004s, 52 content bytes, 55 MiB, 1 groups, readers=1, threshold=4096, buffer=4096
+E nocache: 4 files, 0.006s, 52 content bytes, 55 MiB, 1 groups, readers=2, threshold=256, buffer=1024
+E nocache: 4 files, 0.005s, 52 content bytes, 55 MiB, 1 groups, readers=2, threshold=256, buffer=4096
+E nocache: 4 files, 0.005s, 52 content bytes, 55 MiB, 1 groups, readers=2, threshold=1024, buffer=1024
+E nocache: 4 files, 0.005s, 52 content bytes, 55 MiB, 1 groups, readers=2, threshold=1024, buffer=4096
+E nocache: 4 files, 0.005s, 52 content bytes, 55 MiB, 1 groups, readers=2, threshold=4096, buffer=1024
+E nocache: 4 files, 0.004s, 52 content bytes, 55 MiB, 1 groups, readers=2, threshold=4096, buffer=4096
+E nocache: 4 files, 0.005s, 52 content bytes, 55 MiB, 1 groups, readers=4, threshold=256, buffer=1024
+E nocache: 4 files, 0.006s, 52 content bytes, 55 MiB, 1 groups, readers=4, threshold=256, buffer=4096
+E nocache: 4 files, 0.005s, 52 content bytes, 56 MiB, 1 groups, readers=4, threshold=1024, buffer=1024
+E nocache: 4 files, 0.006s, 52 content bytes, 56 MiB, 1 groups, readers=4, threshold=1024, buffer=4096
+E nocache: 4 files, 0.005s, 52 content bytes, 56 MiB, 1 groups, readers=4, threshold=4096, buffer=1024
+E nocache: 4 files, 0.005s, 52 content bytes, 56 MiB, 1 groups, readers=4, threshold=4096, buffer=4096
+Results: C:\a\_temp\FindCopy wrapper results\bench-results-v3.csv
+No OS caches were evicted. Virtual/sparse measurements do not establish physical device throughput.
+##[group]Run actions/upload-artifact@v4
+with:
+  name: FindCopy-ui-validation-win-x64
+  path: ui-test-artifacts
+  if-no-files-found: warn
+  compression-level: 6
+  overwrite: false
+  include-hidden-files: false
+env:
+  FINDCOPY_EXPECTED_ARCH: X64
+  DOTNET_ROOT: C:\a\_temp\FindCopy-dotnet-arm64
+  DOTNET_ROOT_ARM64: C:\a\_temp\FindCopy-dotnet-arm64
+##[endgroup]
+(node:4144) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+With the provided path, there will be 24 files uploaded
+Artifact name is valid!
+Root directory input is valid!
+Beginning upload of artifact content to blob storage
+(node:4144) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+Uploaded bytes 1708260
+Finished uploading artifact content to blob storage!
+SHA256 digest of uploaded artifact zip is cb20bf2634af503d2484e09a0abc1342523402ed956d84ccd6a98006bb506564
+Finalizing artifact upload
+Artifact FindCopy-ui-validation-win-x64.zip successfully finalized. Artifact ID 11487021175
+Artifact FindCopy-ui-validation-win-x64 has been successfully uploaded! Final size is 1708260 bytes. Artifact ID is 11487021175
+Artifact download URL: https://github.com/kurasis/FindCopy/actions/runs/37631437080/artifacts/11487021175
+##[group]Run dotnet publish src/FindCopy.App -c Release --no-restore -p:RuntimeIdentifier=win-x64 -p:SelfContained=true -o publish
+[36;1mdotnet publish src/FindCopy.App -c Release --no-restore -p:RuntimeIdentifier=win-x64 -p:SelfContained=true -o publish[0m
+shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+env:
+  FINDCOPY_EXPECTED_ARCH: X64
+  DOTNET_ROOT: C:\a\_temp\FindCopy-dotnet-arm64
+  DOTNET_ROOT_ARM64: C:\a\_temp\FindCopy-dotnet-arm64
+##[endgroup]
+  FindCopy.Core -> C:\a\FindCopy\FindCopy\src\FindCopy.Core\bin\Release\net8.0\FindCopy.Core.dll
+  FindCopy.App -> C:\a\FindCopy\FindCopy\src\FindCopy.App\bin\Release\net8.0-windows10.0.17763.0\win-x64\FindCopy.dll
+  FindCopy.App -> C:\a\FindCopy\FindCopy\publish\
+##[group]Run ./tools/test-standard-user.ps1 -PublishedExe publish/FindCopy.exe -UiRunner tests/FindCopy.UiTests/bin/Release/net8.0-windows10.0.17763.0/win-x64/FindCopy.UiTests.exe -OutputDirectory standard-ui-artifacts
+[36;1m./tools/test-standard-user.ps1 -PublishedExe publish/FindCopy.exe -UiRunner tests/FindCopy.UiTests/bin/Release/net8.0-windows10.0.17763.0/win-x64/FindCopy.UiTests.exe -OutputDirectory standard-ui-artifacts[0m
+shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+env:
+  FINDCOPY_EXPECTED_ARCH: X64
+  DOTNET_ROOT: C:\a\_temp\FindCopy-dotnet-arm64
+  DOTNET_ROOT_ARM64: C:\a\_temp\FindCopy-dotnet-arm64
+##[endgroup]
+RUNTIME: OS=Microsoft Windows 10.0.26200; OS architecture=Arm64; process=X64
+STANDARD_USER: runnervma5ngn\FindCopyAcceptance, administrator=false
+DESKTOP_DPI: x=96; y=96
+PASS UI1 real search binds duplicate and empty-file results
+PASS UI2 selection controls retain one copy and clear selection
+PASS UI3 checking every copy is rejected by the bound group model
+PASS UI4 empty-file visibility follows the checkbox
+PASS UI5 staged recovery warnings remain visible after a removed source
+PASS UI6 a failed deletion preserves group membership and selection
+PASS UI7 native policy exclusions qualify no-duplicate wording
+PASS UI8 cancelling a real scan restores controls and hides partial results
+PASS UI9 sanitized performance settings form valid scanner options
+PASS UI10 declining native cloud consent keeps online-only reads disabled
+PASS UI11 deletion controls remain visible at minimum window width
+PASS UI13 recovery history restores an actual recycled file and disables repeats
+PASS UI14 pending restore cleanup remains available and completes through the history window
+RENDER_SCALE: exported 100/125/150/200 percent; does not change the desktop's actual DPI
+PASS UI15 minimum-width actions remain visible in 100/125/150/200 percent render exports
+RESULT_UI: groups=2000; selection/clear=0.255s
+PASS UI16 two thousand result groups support bulk selection and clearing
+PUBLISHED_DIALOG: Подтвердите удаление, button=6, posted=True
+PUBLISHED_DIALOG: Удаление, button=2, posted=True
+PUBLISHED_DIALOG: Подтвердите восстановление, button=6, posted=True
+PASS UI12 published executable scans, recycles, and restores a selected copy
+16 passed, 0 failed
+##[group]Run actions/upload-artifact@v4
+with:
+  name: FindCopy-standard-user-validation-win-x64
+  path: standard-ui-artifacts
+  if-no-files-found: warn
+  compression-level: 6
+  overwrite: false
+  include-hidden-files: false
+env:
+  FINDCOPY_EXPECTED_ARCH: X64
+  DOTNET_ROOT: C:\a\_temp\FindCopy-dotnet-arm64
+  DOTNET_ROOT_ARM64: C:\a\_temp\FindCopy-dotnet-arm64
+##[endgroup]
+(node:4988) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+With the provided path, there will be 15 files uploaded
+Artifact name is valid!
+Root directory input is valid!
+Beginning upload of artifact content to blob storage
+(node:4988) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+Uploaded bytes 854843
+Finished uploading artifact content to blob storage!
+SHA256 digest of uploaded artifact zip is 62233da3aa8ba5b30542df7c08bedd35554d0c3f274e8c46b3d3b24c7b2c18cb
+Finalizing artifact upload
+Artifact FindCopy-standard-user-validation-win-x64.zip successfully finalized. Artifact ID 11486446938
+Artifact FindCopy-standard-user-validation-win-x64 has been successfully uploaded! Final size is 854843 bytes. Artifact ID is 11486446938
+Artifact download URL: https://github.com/kurasis/FindCopy/actions/runs/37631437080/artifacts/11486446938
+##[group]Run actions/upload-artifact@v4
+with:
+  name: FindCopy-win-x64
+  path: publish/FindCopy.exe
+  if-no-files-found: warn
+  compression-level: 6
+  overwrite: false
+  include-hidden-files: false
+env:
+  FINDCOPY_EXPECTED_ARCH: X64
+  DOTNET_ROOT: C:\a\_temp\FindCopy-dotnet-arm64
+  DOTNET_ROOT_ARM64: C:\a\_temp\FindCopy-dotnet-arm64
+##[endgroup]
+(node:8536) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+With the provided path, there will be 1 file uploaded
+Artifact name is valid!
+Root directory input is valid!
+Beginning upload of artifact content to blob storage
+(node:8536) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+Uploaded bytes 8388608
+Uploaded bytes 16777216
+Uploaded bytes 25165824
+Uploaded bytes 33554432
+Uploaded bytes 41943040
+Uploaded bytes 50331648
+Uploaded bytes 58720256
+Uploaded bytes 67108864
+Uploaded bytes 68195127
+Finished uploading artifact content to blob storage!
+SHA256 digest of uploaded artifact zip is ed6190e223398943e6058bc821376fb4c18d7630fbd6833ac443c4e6ed56cd75
+Finalizing artifact upload
+Artifact FindCopy-win-x64.zip successfully finalized. Artifact ID 11486158436
+Artifact FindCopy-win-x64 has been successfully uploaded! Final size is 68195127 bytes. Artifact ID is 11486158436
+Artifact download URL: https://github.com/kurasis/FindCopy/actions/runs/37631437080/artifacts/11486158436
+##[group]Run actions/upload-artifact@v4
+with:
+  name: FindCopy-host-win-x64
+  path: windows-environment.json
+  if-no-files-found: warn
+  compression-level: 6
+  overwrite: false
+  include-hidden-files: false
+env:
+  FINDCOPY_EXPECTED_ARCH: X64
+  DOTNET_ROOT: C:\a\_temp\FindCopy-dotnet-arm64
+  DOTNET_ROOT_ARM64: C:\a\_temp\FindCopy-dotnet-arm64
+##[endgroup]
+(node:1724) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+With the provided path, there will be 1 file uploaded
+Artifact name is valid!
+Root directory input is valid!
+Beginning upload of artifact content to blob storage
+(node:1724) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+Uploaded bytes 518
+Finished uploading artifact content to blob storage!
+SHA256 digest of uploaded artifact zip is 78d3151eb3175c3e3344f77b8699e282338d463376a32314dcc49ca4424045a9
+Finalizing artifact upload
+Artifact FindCopy-host-win-x64.zip successfully finalized. Artifact ID 11486656646
+Artifact FindCopy-host-win-x64 has been successfully uploaded! Final size is 518 bytes. Artifact ID is 11486656646
+Artifact download URL: https://github.com/kurasis/FindCopy/actions/runs/37631437080/artifacts/11486656646
+Post job cleanup.
+[command]"C:\Program Files\Git\bin\git.exe" version
+git version 2.55.0.windows.5
+Temporarily overriding HOME='C:\a\_temp\29b96d6e-2666-484e-8751-ef4ef8a8fc0c' before making global git config changes
+Adding repository directory to the temporary git global config as a safe directory
+[command]"C:\Program Files\Git\bin\git.exe" config --global --add safe.directory C:\a\FindCopy\FindCopy
+[command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp core\.sshCommand
+[command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+[command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+http.https://github.com/.extraheader
+[command]"C:\Program Files\Git\bin\git.exe" config --local --unset-all http.https://github.com/.extraheader
+[command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+[command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
+[command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
+Cleaning up orphan processes
+Terminate orphan process: pid (5300) (dotnet)
+Terminate orphan process: pid (8948) (conhost)
+Terminate orphan process: pid (8172) (dotnet)
+Terminate orphan process: pid (3540) (conhost)
+##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/checkout@v4, actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

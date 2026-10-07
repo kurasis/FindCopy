@@ -1,0 +1,7 @@
+RUNTIME: OS=Microsoft Windows 10.0.26200; OS architecture=Arm64; process=X64
+FindCopy engine tests, root: C:\Users\runneradmin\AppData\Local\Temp\findcopy-tests-08264480
+  ok   N1 SMB Unicode long paths and exact content groups
+  ok   N2 SMB hard links do not inflate physical copies or savings
+  ok   N3 SMB cache reuse and changed content work without USN inventory
+  ok   N4 SMB streaming cancellation preserves a usable cache
+4 passed, 0 failed, 0 skipped

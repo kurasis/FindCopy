@@ -1,0 +1,20 @@
+RUNTIME: OS=Microsoft Windows 10.0.26200; OS architecture=Arm64; process=Arm64
+DESKTOP_DPI: x=96; y=96
+PASS UI1 real search binds duplicate and empty-file results
+PASS UI2 selection controls retain one copy and clear selection
+PASS UI3 checking every copy is rejected by the bound group model
+PASS UI4 empty-file visibility follows the checkbox
+PASS UI5 staged recovery warnings remain visible after a removed source
+PASS UI6 a failed deletion preserves group membership and selection
+PASS UI7 native policy exclusions qualify no-duplicate wording
+PASS UI8 cancelling a real scan restores controls and hides partial results
+PASS UI9 sanitized performance settings form valid scanner options
+PASS UI10 declining native cloud consent keeps online-only reads disabled
+PASS UI11 deletion controls remain visible at minimum window width
+PASS UI13 recovery history restores an actual recycled file and disables repeats
+PASS UI14 pending restore cleanup remains available and completes through the history window
+RENDER_SCALE: exported 100/125/150/200 percent; does not change the desktop's actual DPI
+PASS UI15 minimum-width actions remain visible in 100/125/150/200 percent render exports
+RESULT_UI: groups=2000; selection/clear=0.086s
+PASS UI16 two thousand result groups support bulk selection and clearing
+15 passed, 0 failed

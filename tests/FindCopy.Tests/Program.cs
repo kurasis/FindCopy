@@ -55,7 +55,7 @@ if (args.Contains("--network-only"))
     try { NetworkAcceptanceTests.Run(Test, root, Environment.GetEnvironmentVariable("FINDCOPY_SMB_ROOT") ?? throw new InvalidOperationException("Missing FINDCOPY_SMB_ROOT")); }
     finally { Directory.Delete(root, recursive: true); }
     Console.WriteLine($"{passed} passed, {failed} failed, {skipped} skipped");
-    return failed == 0 ? 0 : 1;
+    return failed == 0 && skipped == 0 ? 0 : 1;
 }
 
 Test("01 same bytes, different names/extensions/timestamps -> duplicate", () =>
@@ -693,6 +693,11 @@ if (OperatingSystem.IsWindows())
 }
 else { skipped += 22; Console.WriteLine("  SKIP W1-W22 native filesystem and recovery checks require Windows"); }
 try { Directory.Delete(root, true); } catch { }
+if (OperatingSystem.IsWindows() && !string.IsNullOrEmpty(expectedArchitecture) && skipped != 0)
+{
+    failed++;
+    Console.WriteLine("  FAIL Windows architecture validation requires all native acceptance cases; skipped=" + skipped);
+}
 Console.WriteLine($"\n{passed} passed, {failed} failed, {skipped} skipped");
 return failed == 0 ? 0 : 1;
 

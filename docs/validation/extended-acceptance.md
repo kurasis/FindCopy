@@ -1,5 +1,11 @@
 # Extended Acceptance
 
+Current Windows jobs run exclusively on `windows-11-arm` and reject non-client
+or non-Windows-11 hosts. See [Windows 11 acceptance](windows11-acceptance.md)
+for source `3b8b771`, the fully written 50 GiB pair and mixed 135,250-path
+workload, host metadata, and complete raw CSV. Server measurements below are
+historical observations, retained with their source attribution.
+
 The executable runner adds real dense-file, native NTFS scale, and ordinary-user
 published-desktop checks. These are correctness/resource gates on recorded hosts;
 no physical HDD/SATA/NVMe/network tuning is inferred from a cloud VM.

@@ -19,6 +19,10 @@
   `docs/implementation-audit.md` for remaining specification gaps.
 - WPF and native Windows filesystem operations require Windows runtime
   validation. A Linux cross-build is compilation evidence only.
+- Windows CI must use `windows-11-arm`. Require a Windows 11 client OS and
+  ARM64 host; do not fall back to Windows Server. Validate both native
+  `win-arm64` and self-contained `win-x64` processes under Windows emulation.
+  Use the pinned SDK in `global.json` and the verified Windows SDK installer.
 - On Windows, also run `dotnet run -c Release --project tests/FindCopy.UiTests`.
   The WPF runner emits screenshots and exercises real scanning, controls,
   cancellation, cloud consent, settings, and recovery reporting.

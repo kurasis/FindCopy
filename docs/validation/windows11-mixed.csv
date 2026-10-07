@@ -1,0 +1,7 @@
+utc;mode;phase;expected_files;files;logical_bytes;elapsed_s;peak_scan_ram_mib;content_bytes;quick_bytes;full_bytes;exact_bytes;native_directories;inventory_directories;groups;errors;changed;complete;cancelled;os;cpu_count;memory_budget_mib
+2026-10-07T13:17:37.6906849Z;workload;full-inventory-fill;135250;135250;105103374000;12.4520549;141.109375;102400000;0;102400000;0;5108;0;5000;0;0;True;False;Microsoft Windows 10.0.26200;4;16374
+2026-10-07T13:17:40.7114328Z;workload;warm-inventory;135250;135250;105103374000;2.99561;111.515625;0;0;0;0;0;5108;5000;0;0;True;False;Microsoft Windows 10.0.26200;4;16374
+2026-10-07T13:17:43.5069217Z;workload;rename-add-delete;135250;135250;105108369904;2.7836495;115.88671875;4096;0;4096;0;2;5106;5000;0;0;True;False;Microsoft Windows 10.0.26200;4;16374
+2026-10-07T13:17:46.2186671Z;workload;fresh-oracle;135250;135250;105108369904;2.6997704;117.09375;102395904;0;102395904;0;5108;0;5000;0;0;True;False;Microsoft Windows 10.0.26200;4;16374
+2026-10-07T13:17:46.2840368Z;workload;cancel-inventory-replay;135250;11001;11964494500;0.0321545;134.7734375;0;0;0;0;0;17;0;0;0;False;True;Microsoft Windows 10.0.26200;4;16374
+2026-10-07T13:17:49.1718997Z;workload;after-cancel-warm;135250;135250;105108369904;2.8824164;141.83203125;0;0;0;0;0;5108;5000;0;0;True;False;Microsoft Windows 10.0.26200;4;16374

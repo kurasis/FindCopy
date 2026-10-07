@@ -2,8 +2,12 @@
 
 The E–H runner is implemented and its full 72-configuration matrix has passed
 on an unknown virtual storage domain. That validates the harness, not any
-physical device profile. This cloud host exposes no certified HDD/SATA/NVMe
-or SMB target; production tuning remains an external measurement gate.
+physical device profile. Windows 11 CI additionally runs actual SMB protocol
+checks over a private loopback UNC share, including long paths, hard links,
+cache mutation, cancellation, and an H sweep over four fully written 8 MiB
+files. It provides no certified HDD/SATA/NVMe device or external network link;
+production tuning remains an external measurement gate. See
+[Windows 11 evidence](validation/windows11-acceptance.md).
 
 ## Device matrix
 
@@ -71,5 +75,7 @@ RAM is sampled every 10 ms and excludes dataset generation; it is approximate.
 Choose defaults only after repeated complete runs with no errors or changed
 files show a stable improvement on the relevant device. Retain conservative
 fallbacks for unknown devices and network shares. Provider-specific OneDrive
-hydration tests require an authenticated provider on the target host; the CI
-Cloud Files fixture tests default non-local exclusion without a network account.
+service integration requires an authenticated provider on the target host.
+The CI Cloud Files fixture connects a real local provider and exercises default
+non-local exclusion, explicit hydration, and transfer failures without a network
+account.

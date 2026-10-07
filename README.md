@@ -15,7 +15,7 @@ is historical evidence.
 
 ## Build and test
 
-Use .NET SDK 8.0.425, or a compatible .NET 8 SDK. The desktop application runs
+Use .NET SDK 8.0.425, pinned by `global.json`. The desktop application runs
 on Windows; Linux can cross-build it and run portable engine checks.
 
 ```sh
@@ -33,10 +33,29 @@ dotnet run -c Release --no-build --project tests/FindCopy.UiTests -- ui-test-art
 ```
 
 These are console runners; `dotnet test` does not execute their assertions.
-Linux reports **61 passed, 0 failed, 21 platform skips**, plus **17 acceptance
+Linux reports **61 passed, 0 failed, 25 platform skips**, plus **17 acceptance
 regressions passed**. Windows executes the native checks and WPF runner; CI
 publishes screenshots and `FindCopy.exe`. See the audit for the verified run.
 The solution includes all six projects.
+
+Windows CI uses `windows-11-arm` exclusively, requires an actual Windows 11
+client OS, and tests native ARM64 and x64 emulation separately. It publishes
+self-contained executables for both architectures. See
+[Windows 11 acceptance](docs/validation/windows11-acceptance.md) for host,
+runtime, desktop, SMB, workload, and resource evidence.
+
+For native ARM64 builds, set the runtime on each project, rather than the
+solution. For example:
+
+```powershell
+dotnet build tests/FindCopy.UiTests -c Release -p:RuntimeIdentifier=win-arm64 -p:SelfContained=true
+./tests/FindCopy.UiTests/bin/Release/net8.0-windows10.0.17763.0/win-arm64/FindCopy.UiTests.exe ui-test-artifacts
+dotnet publish src/FindCopy.App -c Release -r win-arm64 --self-contained true -o publish-arm64
+```
+
+Replace `win-arm64` with `win-x64` for the x64 binary. On ARM64, execute the
+self-contained test executable to validate x64 emulation; a native `dotnet`
+launcher alone does not establish the application's process architecture.
 
 `build.bat test nopause` runs all three suites on Windows and publishes the
 self-contained x64 single file to `publish\FindCopy.exe`.

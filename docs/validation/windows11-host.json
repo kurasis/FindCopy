@@ -1,0 +1,33 @@
+{
+  "utc": "2026-10-07T13:15:10.1623054Z",
+  "caption": "Microsoft Windows 11 Enterprise",
+  "version": "10.0.26200",
+  "build": "26200",
+  "productType": 1,
+  "osArchitecture": "Arm64",
+  "shellArchitecture": "Arm64",
+  "cpuCount": 4,
+  "memoryKiB": 16766980,
+  "imageVersion": "20261004.176.1",
+  "imageOS": "win11-vs2026-arm64",
+  "volumes": [
+    {
+      "DriveLetter": null,
+      "FileSystem": "FAT32",
+      "SizeRemaining": 68783616,
+      "Size": 99614720
+    },
+    {
+      "DriveLetter": null,
+      "FileSystem": "NTFS",
+      "SizeRemaining": 454909952,
+      "Size": 471855104
+    },
+    {
+      "DriveLetter": "C",
+      "FileSystem": "NTFS",
+      "SizeRemaining": 132644601856,
+      "Size": 274284392448
+    }
+  ]
+}
