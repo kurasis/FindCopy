@@ -1,0 +1,6 @@
+utc;mode;phase;expected_files;files;logical_bytes;elapsed_s;peak_scan_ram_mib;content_bytes;quick_bytes;full_bytes;exact_bytes;native_directories;inventory_directories;groups;errors;changed;complete;cancelled;os;cpu_count;memory_budget_mib
+2026-10-07T10:13:45.6367582Z;dense;full-exact;2;2;21474836480;10.7778336;55.88671875;42950328320;655360;21474836480;21474836480;0;0;1;0;0;True;False;Debian GNU/Linux 13 (trixie);4;24576
+2026-10-07T10:13:45.7236615Z;dense;cancel-full;2;2;21474836480;0.0707362;58.6484375;1703936;655360;1048576;0;0;0;0;0;0;False;True;Debian GNU/Linux 13 (trixie);4;24576
+2026-10-07T10:13:51.2554438Z;dense;after-cancel;2;2;21474836480;5.5299301;59.0390625;21474836480;0;21474836480;0;0;0;1;0;0;True;False;Debian GNU/Linux 13 (trixie);4;24576
+2026-10-07T10:13:51.2648731Z;dense;warm;2;2;21474836480;0.0032285;59.07421875;0;0;0;0;0;0;1;0;0;True;False;Debian GNU/Linux 13 (trixie);4;24576
+2026-10-07T10:13:51.2722867Z;dense;middle-difference;2;2;21474836480;0.0060645;59.078125;196608;196608;0;0;0;0;0;0;0;True;False;Debian GNU/Linux 13 (trixie);4;24576

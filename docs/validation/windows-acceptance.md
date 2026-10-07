@@ -61,3 +61,15 @@ suite exercises actual handle-bound staging and shell recycling separately.
 These automated checks do not certify provider-specific OneDrive service
 integration, every Windows build/theme/DPI combination, or physical-device
 performance. See [hardware acceptance](../hardware-acceptance.md).
+
+## Published executable and ordinary-user follow-up
+
+[CI run 37611870942](https://github.com/kurasis/FindCopy/actions/runs/37611870942)
+passed on source `e1e1aea`, including all baseline, audit, and regular WPF checks
+above. A separate credentialed launch verifies a non-administrator Windows
+token, repeats the eleven WPF checks, and adds a twelfth check against the
+published single-file executable. That child performs actual search, recycling
+of an owned duplicate, preservation of its keeper, and exit with code zero.
+[Console evidence](windows-standard-user-acceptance.txt) records 12 passed,
+0 failed. [Extended acceptance](extended-acceptance.md) explains isolation,
+reproduction, dense-file checks, and real five/ten-million-file NTFS evidence.

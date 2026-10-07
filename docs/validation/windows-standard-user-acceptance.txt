@@ -1,0 +1,16 @@
+STANDARD_USER: runnervmfi6oq\FindCopyAcceptance, administrator=false
+PASS UI1 real search binds duplicate and empty-file results
+PASS UI2 selection controls retain one copy and clear selection
+PASS UI3 checking every copy is rejected by the bound group model
+PASS UI4 empty-file visibility follows the checkbox
+PASS UI5 staged recovery warnings remain visible after a removed source
+PASS UI6 a failed deletion preserves group membership and selection
+PASS UI7 native policy exclusions qualify no-duplicate wording
+PASS UI8 cancelling a real scan restores controls and hides partial results
+PASS UI9 sanitized performance settings form valid scanner options
+PASS UI10 declining native cloud consent keeps online-only reads disabled
+PASS UI11 deletion controls remain visible at minimum window width
+PUBLISHED_DIALOG: Подтвердите удаление, button=6, posted=True
+PUBLISHED_DIALOG: Удаление, button=2, posted=True
+PASS UI12 published executable scans and actually recycles a selected copy
+12 passed, 0 failed

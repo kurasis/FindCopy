@@ -66,6 +66,7 @@ and does not provide Windows mandatory share-mode guarantees.
 | Windows core/native baseline | 62 passed, 0 failed, 0 skipped |
 | Windows acceptance regressions | 17 passed, 0 failed |
 | Windows WPF interaction acceptance | 11 passed, 0 failed |
+| Ordinary-user Windows WPF + published EXE | Non-admin token; 12 passed; actual scan/recycle/keeper preservation and clean exit |
 | Windows PowerShell hardware wrapper | 18 configurations passed; paths with spaces |
 | Incremental inventory regressions | 15 passing cases included in baseline |
 | Million physical sparse A files | 1,000,000 files; 0 content bytes; 0 groups; 2.421 s; 315.37 MiB sampled working set |
@@ -75,6 +76,10 @@ and does not provide Windows mandatory share-mode guarantees.
 | Virtual 5-million metadata records | 0 content bytes/opens; 1.442 s; 1,618.30 MiB |
 | Virtual 10-million metadata records | 0 content bytes/opens; 2.088 s; 3,126.54 MiB |
 | E–H harness smoke | 18 configurations per scenario, 72 successful runs on unknown virtual storage |
+| Two fully written 10 GiB Linux files | Full hashing + exact comparison; 40 GiB logical reads plus samples; cancellation/resume/cache/change passed; peak 59.08 MiB |
+| Two fully written 50 GiB Windows files | Full hashing + exact comparison; 200 GiB logical reads plus samples; cancellation/resume/cache/change passed; peak 54.09 MiB |
+| Real 5-million-file NTFS tree | Six inventory/change/oracle/cancellation phases passed; peak 1,838.79 MiB; warm native enumeration and content I/O both zero |
+| Real 10-million-file NTFS tree | Six phases passed; peak 3,784.91 MiB; warm native enumeration and content I/O both zero |
 
 Windows runtime/UI evidence and run links are recorded in
 [Windows validation](validation/windows-acceptance.md). The baseline includes
@@ -82,6 +87,10 @@ real native USN reuse with zero warm directory enumeration/content I/O,
 long-path shell recycling, EFS access denial, Cloud Files placeholders,
 and blocked writers throughout recycling of all hard-link aliases.
 The eight Linux skips are Windows-only baseline/native acceptance cases.
+Additional dense and real NTFS scale evidence, including reproduction and raw
+CSV, is in [extended acceptance](validation/extended-acceptance.md). Inventory
+replay avoids native enumeration but is slower than a fresh OS-cached scan on
+this host; this is a measured limitation, not a guaranteed speedup.
 
 The 15 inventory regressions cover unchanged reuse, changed parents,
 addition/deletion, aliases, subtree rename, journal reset/gap/unavailability,
@@ -114,14 +123,17 @@ It proves bounded full hashing, rather than just cancellation; sparse holes
 and warm OS caches mean the elapsed time is not dense-disk bandwidth.
 The virtual fixture feeds compact unique-size metadata and throws on content
 access. It measures engine memory, not ten million native file opens or real
-path distribution. The physical million-file dataset verifies enumeration.
+path distribution. The newer real NTFS five/ten-million-file dataset verifies
+enumeration, inventory reuse, changes, and recovery for its controlled path
+and unique-size distribution.
 
 The host reports four .NET processors and a 24,576 MiB GC memory budget. Scan
 working set is sampled every 10 ms and excludes dataset generation. Timings
 are single-run observations, not percentile statistics or a profiler trace.
 The portable backend emits zero Windows-native directory counters; this is
 not evidence of avoided Linux enumeration. B warm reuse is fingerprint reuse;
-only the native Windows USN test demonstrates avoided directory enumeration.
+the native Windows USN tests and real NTFS scale fixture demonstrate avoided
+directory enumeration.
 
 The E–H smoke uses twelve generated sparse files and an explicitly unknown
 storage label. It validates argument handling and all tuning combinations;

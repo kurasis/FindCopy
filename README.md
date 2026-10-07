@@ -115,8 +115,12 @@ Follow [hardware acceptance](docs/hardware-acceptance.md) for device measurement
 
 Recorded checks: one million physical files with zero content I/O, 100,000 B
 files with one 64 KiB sample each, complete BLAKE3 of two 100 GiB sparse files,
-and 5/10 million virtual metadata records. Sparse/virtual throughput is not
-physical disk bandwidth. [Validation evidence](docs/implementation-audit.md)
+5/10 million virtual metadata records, real 5/10 million-file NTFS trees, and
+full hashing plus exact comparison of two fully written 50 GiB Windows files.
+[Extended acceptance](docs/validation/extended-acceptance.md) records actual
+inventory changes, cancellation/recovery, and dense-file results.
+Sparse/virtual throughput is not physical disk bandwidth.
+[Validation evidence](docs/implementation-audit.md)
 records working set, cache state, commands, and limits.
 
 ## Repository layout
