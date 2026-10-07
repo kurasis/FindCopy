@@ -42,13 +42,14 @@ internal static class PublishedAppAcceptance
                 return window.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "FolderBox")) != null;
             });
             AutomationElement Element(string id) => window!.FindFirst(TreeScope.Descendants,
-                new PropertyCondition(AutomationElement.AutomationIdProperty, id)) ?? throw new Exception("Missing published control: " + id);
+                new PropertyCondition(AutomationElement.AutomationIdProperty, id)) ?? throw new ControlNotReadyException(id);
             void Click(string id) => ((InvokePattern)Element(id).GetCurrentPattern(InvokePattern.Pattern)).Invoke();
             ((ValuePattern)Element("FolderBox").GetCurrentPattern(ValuePattern.Pattern)).SetValue(root);
             Click("SearchButton");
             Until(() => Element("SummaryText").Current.Name.Contains("Найдено групп: 1"));
             Click("SelectExtrasButton"); Until(() => Element("DeleteButton").Current.IsEnabled);
             Click("DeleteButton");
+            Until(() => Directory.EnumerateFiles(root).Count() == 1 && Element("SearchButton").Current.IsEnabled);
             Until(() => Element("SummaryText").Current.Name.Contains("Удалено файлов: 1"));
             if (Directory.EnumerateFiles(root).Count() != 1 || Element("SummaryText").Current.Name.Contains("замечаниями"))
                 throw new Exception("Published recycling did not complete cleanly and preserve one copy");
@@ -68,12 +69,16 @@ internal static class PublishedAppAcceptance
     private static void Until(Func<bool> condition)
     {
         var clock = Stopwatch.StartNew();
-        while (!condition())
+        while (true)
         {
+            try { if (condition()) return; }
+            catch (ElementNotAvailableException) { /* Providers can be temporarily unavailable during modal transitions. */ }
+            catch (ControlNotReadyException) { }
             if (clock.Elapsed > TimeSpan.FromSeconds(45)) throw new TimeoutException("Published UI operation timed out");
             Thread.Sleep(20);
         }
     }
+    private sealed class ControlNotReadyException(string id) : Exception("Missing published control: " + id);
     private delegate bool WindowCallback(IntPtr window, IntPtr parameter);
     [DllImport("user32.dll")] private static extern bool EnumWindows(WindowCallback callback, IntPtr parameter);
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
