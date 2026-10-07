@@ -23,8 +23,8 @@ public partial class RecoveryWindow : Window
     {
         public string Date => Entry.DeletedUtc.ToLocalTime().ToString("g");
         public string State => Entry.State == RecoveryState.Restored ? "Восстановлен"
-            : !System.IO.File.Exists(Entry.State == RecoveryState.Recycled ? Entry.RecyclePath : Entry.StagedPath) ? "Недоступен"
-            : Entry.State == RecoveryState.Staged ? "Подготовлен" : "В корзине";
+            : Entry.State == RecoveryState.Staged ? System.IO.File.Exists(Entry.StagedPath) ? "Подготовлен" : "Проверить корзину"
+            : System.IO.File.Exists(Entry.RecyclePath) ? "В корзине" : "Недоступен";
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e) => Refresh();

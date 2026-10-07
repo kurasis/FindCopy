@@ -24,8 +24,9 @@ static class RecoveryTests
                 new MetaSnapshot { VolumeSerial = 1, FileIdLow = 2 }, DateTime.UtcNow, RecoveryState.Staged);
             journal.Save(entry); string bad = Path.Combine(path, Guid.NewGuid().ToString("N") + ".json");
             File.WriteAllText(bad, "{broken");
+            journal.Save(entry with { Id = Guid.NewGuid(), FormatVersion = 2 });
             var loaded = journal.Load(out var errors);
-            Require(loaded.Single().Id == entry.Id && errors.Count == 1 && File.Exists(bad), "corrupt history silently discarded");
+            Require(loaded.Single().Id == entry.Id && errors.Count == 2 && File.Exists(bad), "corrupt or unsupported history silently discarded");
         });
     }
     private static void Require(bool condition, string message) { if (!condition) throw new Exception(message); }

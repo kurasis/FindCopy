@@ -91,12 +91,13 @@ public sealed unsafe class WindowsRecoveryService
             entry = Journal.Get(id);
             if (entry.State == RecoveryState.Restored) throw new IOException("Файл уже восстановлен");
             CheckParents(entry.OriginalPath); CheckLocalPath(entry.StagedPath);
+            if (!Path.GetFileName(Path.GetDirectoryName(entry.StagedPath)!).Equals(".FindCopy-recycle-" + id.ToString("N"), StringComparison.Ordinal))
+                throw new InvalidDataException("Не подтверждён каталог подготовки");
+            if (entry.State == RecoveryState.Staged && !File.Exists(entry.StagedPath)) entry = ResolveInterruptedRecycle(entry);
             if (entry.State == RecoveryState.Staged) CheckParents(entry.StagedPath);
             string originalParent = Path.GetDirectoryName(entry.OriginalPath)!;
             if (!Directory.Exists(originalParent)) throw new DirectoryNotFoundException("Исходная папка отсутствует; восстановите её сначала");
             string source = entry.State == RecoveryState.Recycled ? entry.RecyclePath ?? throw new IOException("Путь корзины не сохранён") : entry.StagedPath;
-            if (!Path.GetFileName(Path.GetDirectoryName(entry.StagedPath)!).Equals(".FindCopy-recycle-" + id.ToString("N"), StringComparison.Ordinal))
-                throw new InvalidDataException("Не подтверждён каталог подготовки");
             var backend = new WindowsDeletionBackend();
             SafeFileHandle? metadata = null;
             try
@@ -142,6 +143,34 @@ public sealed unsafe class WindowsRecoveryService
         {
             return new(id, entry?.OriginalPath ?? "", moved, moved ? "Файл восстановлен, но история или запись корзины не обновлены: " + ex.Message : ex.Message);
         }
+    }
+
+    private RecoveryEntry ResolveInterruptedRecycle(RecoveryEntry entry)
+    {
+        // The flushed pre-staging entry survives a crash before the shell result is journaled.
+        // Locate only its unique private staging path in this user's bin, then verify the object.
+        string bin = Path.Combine(Path.GetPathRoot(entry.StagedPath)!, "$Recycle.Bin", WindowsIdentity.GetCurrent().User!.Value);
+        RecoveryEntry? found = null;
+        if (Directory.Exists(bin))
+            foreach (string metadata in Directory.EnumerateFiles(bin, "$I*"))
+            {
+                string source = Path.Combine(bin, "$R" + Path.GetFileName(metadata)[2..]);
+                string? hash = null;
+                try
+                {
+                    BinMetadata(source, entry.StagedPath, entry.Version.Size, out string validated);
+                    using var file = OpenLockedFile(source);
+                    if (new WindowsFileSystem().TryGetSnapshot(file, source, out var actual) && SameVersion(entry.Version, actual)) hash = validated;
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or OverflowException or Win32Exception)
+                { /* Other entries, incomplete bin operations, and uncertain objects are never adopted. */ }
+                if (hash == null) continue;
+                if (found != null) throw new IOException("В корзине несколько подходящих записей; автоматическое восстановление отменено");
+                found = entry with { State = RecoveryState.Recycled, RecyclePath = source, MetadataHash = hash };
+            }
+        if (found == null) throw new FileNotFoundException("Записанный файл не найден ни в каталоге подготовки, ни в личной корзине");
+        Journal.Save(found);
+        return found;
     }
 
     private static List<SafeFileHandle> OpenParents(string path)

@@ -195,6 +195,20 @@ static class WindowsAcceptanceTests
             }
             finally { Directory.Delete(Path.GetDirectoryName(entry.StagedPath)!, true); }
         });
+        test("W13 a shell move interrupted before journal update remains recoverable", () =>
+        {
+            string d = Path.Combine(root, "restore-interrupted"); Directory.CreateDirectory(d);
+            string original = Path.Combine(d, "file"); File.WriteAllText(original, "interrupted bytes");
+            var service = new WindowsRecoveryService(Path.Combine(root, "history-interrupted"));
+            var backend = new WindowsDeletionBackend(service.Journal.DirectoryPath); string staged;
+            using (var h = backend.OpenCandidate(original)) Require(backend.StageForRecycle(h, original, out staged, out var error), "stage: " + error);
+            Require(backend.MoveToRecycleBin(staged, out var recycleError) && recycleError == null, "recycle: " + recycleError);
+            var entry = service.Journal.Load(out _).Single();
+            service.Journal.Save(entry with { State = RecoveryState.Staged, RecyclePath = null, MetadataHash = null });
+            var result = new WindowsRecoveryService(service.Journal.DirectoryPath).Restore(entry.Id);
+            Require(result.Restored && result.Reason == null && File.ReadAllText(original) == "interrupted bytes" &&
+                service.Journal.Get(entry.Id).State == RecoveryState.Restored, "interrupted recycle recovery: " + result.Reason);
+        });
         test("W10 independently recycled hard-link aliases restore their original paths", () =>
         {
             string d = Path.Combine(root, "restore-aliases"); Directory.CreateDirectory(d);
