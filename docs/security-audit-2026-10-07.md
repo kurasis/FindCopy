@@ -185,6 +185,17 @@ Before fixes: portable baseline **67 passed, 26 Windows skips**; acceptance runn
 (`IDE0005`, `IDE0051`, `IDE0052`, `IDE0059`) passed. These console runners execute
 real assertions; `dotnet test` is not a substitute.
 
+[Windows/Linux validation run 37668230620](https://github.com/kurasis/FindCopy/actions/runs/37668230620)
+completed successfully for code commit `19302b5d30328e83e4954b5e919dedc2ab954d1c`.
+Both native ARM64 and x64 emulation on Windows 11 passed **101 baseline checks,
+0 failures/skips**, **17 acceptance regressions**, **19 WPF checks in each of the
+light/dark themes**, **4 SMB checks**, and **20 standard-account/published EXE
+checks**. Logs explicitly contain the marker-link and universal file-confirmation
+regressions. Linux CI passed **75 baseline checks, 26 platform skips** and
+**17 acceptance regressions**. The subsequent documentation-only commit records
+these results; it does not change the validated application or tests. The separate
+extended scale/performance run was still running when this evidence was recorded.
+
 Windows runtime confirmation belongs to `windows-11-arm` CI for native ARM64 and
 x64 emulation, including WPF confirmation tests, native filesystem/recovery and
 standard-account published EXE tests. Linux cross-compilation alone does not
