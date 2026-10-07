@@ -34,6 +34,13 @@ internal static class Program
         if (publishedIndex >= 0) _published = Path.GetFullPath(args[publishedIndex + 1]);
         _artifacts = Path.GetFullPath(args.Length == 0 ? "ui-test-artifacts" : args[0]);
         Directory.CreateDirectory(_artifacts);
+        if (args.Contains("--require-standard-user"))
+        {
+            // Credentialed launches inherit the administrator's TEMP; use this account's writable fixture area.
+            string temporary = Path.Combine(_artifacts, "temp"); Directory.CreateDirectory(temporary);
+            Environment.SetEnvironmentVariable("TEMP", temporary);
+            Environment.SetEnvironmentVariable("TMP", temporary);
+        }
         var app = new App { CreateStartupWindow = false }; app.InitializeComponent();
         app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
         app.Dispatcher.InvokeAsync(async () =>
