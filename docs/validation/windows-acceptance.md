@@ -1,5 +1,8 @@
 # Windows Runtime Acceptance
 
+Historical Server evidence. Current Windows CI uses Windows 11 client ARM64
+exclusively, including x64 emulation. See [Windows 11 acceptance](windows11-acceptance.md).
+
 [CI run 37603823850](https://github.com/kurasis/FindCopy/actions/runs/37603823850)
 completed successfully for source `4db11654eabe57e6f239aa3cbb31b0b62c1127cb`
 on 2026-10-07. Both Linux and Windows jobs passed. Windows built all six

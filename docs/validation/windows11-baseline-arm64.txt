@@ -1,6 +1,6 @@
-Source: aa74f5d; GitHub Actions run 37631437080; job 112826462961
+Source: 983ab35; GitHub Actions run 37642268416; job 112864056478
 RUNTIME: OS=Microsoft Windows 10.0.26200; OS architecture=Arm64; process=Arm64
-FindCopy engine tests, root: C:\Users\runneradmin\AppData\Local\Temp\findcopy-tests-0c5ebda0
+FindCopy engine tests, root: C:\Users\runneradmin\AppData\Local\Temp\findcopy-tests-fc8cf640
   ok   01 same bytes, different names/extensions/timestamps -> duplicate
   ok   02 same size, different first bytes -> rejected at Q1, no full hash
   ok   03 same size and start, different end -> rejected at Q2
@@ -44,6 +44,9 @@ FindCopy engine tests, root: C:\Users\runneradmin\AppData\Local\Temp\findcopy-te
   ok   D6 deleting a copy also removes its hard links
   ok   D7 same file under two paths is never deleted as its own duplicate
   ok   D8 Recycle Bin mode on a fixed drive
+  ok   C1 late cloud metadata requires a fresh hash and repeated exact comparison
+  ok   C2 metadata-only cloud retry cannot retain a changed payload's old group
+  ok   C3 a verified late cloud version is reusable from the fingerprint cache
   ok   I1 unchanged inventory avoids directory enumeration and content reads
   ok   I2 only modified parents are enumerated
   ok   I3 creation and deletion update inventory membership
@@ -70,15 +73,52 @@ FindCopy engine tests, root: C:\Users\runneradmin\AppData\Local\Temp\findcopy-te
   ok   W2 native USN warm scan avoids unchanged directory enumeration
   ok   W3 native EFS logical content and access denial
   ok   W4 native Cloud Files placeholder is never hydrated by default
-CLOUD_BEFORE: online-a size=4096; write=134358546420095720; change=134358546420095720; creation=134358546420095720
-CLOUD_BEFORE: online-b size=4096; write=134358546420379201; change=134358546420379201; creation=134358546420379201
+CLOUD_BEFORE: online-a size=4096; write=134358593009858804; change=134358593009858804; creation=134358593009858804
+CLOUD_BEFORE: online-b size=4096; write=134358593010690158; change=134358593010690158; creation=134358593010690158
 CLOUD_DOWNLOAD: fetches=2; groups=1; unchecked=False; errors=0; changed=0; content=24576; issues=
-CLOUD_AFTER: online-a size=4096; write=134358546420095720; change=134358546429104437; creation=134358546420095720
-CLOUD_AFTER: online-b size=4096; write=134358546420379201; change=134358546433409848; creation=134358546420379201
+CLOUD_AFTER: online-a size=4096; write=134358593009858804; change=134358593018611008; creation=134358593009858804
+CLOUD_AFTER: online-b size=4096; write=134358593010690158; change=134358593030186278; creation=134358593010690158
+CLOUD_BEFORE: online-a size=4096; write=134358593035252628; change=134358593035252628; creation=134358593035252628
+CLOUD_BEFORE: online-b size=4096; write=134358593040343085; change=134358593040343085; creation=134358593040343085
+CLOUD_DOWNLOAD: fetches=2; groups=1; unchecked=False; errors=0; changed=0; content=24576; issues=
+CLOUD_AFTER: online-a size=4096; write=134358593035252628; change=134358593040343085; creation=134358593035252628
+CLOUD_AFTER: online-b size=4096; write=134358593040343085; change=134358593050640204; creation=134358593040343085
+CLOUD_BEFORE: online-a size=4096; write=134358593055382267; change=134358593055382267; creation=134358593055382267
+CLOUD_BEFORE: online-b size=4096; write=134358593059388908; change=134358593059388908; creation=134358593059388908
+CLOUD_DOWNLOAD: fetches=2; groups=1; unchecked=False; errors=0; changed=0; content=24576; issues=
+CLOUD_AFTER: online-a size=4096; write=134358593055382267; change=134358593059698356; creation=134358593055382267
+CLOUD_AFTER: online-b size=4096; write=134358593059388908; change=134358593064775446; creation=134358593059388908
+CLOUD_BEFORE: online-a size=4096; write=134358593069363447; change=134358593069363447; creation=134358593069363447
+CLOUD_BEFORE: online-b size=4096; write=134358593071448657; change=134358593071448657; creation=134358593071448657
+CLOUD_DOWNLOAD: fetches=2; groups=1; unchecked=False; errors=0; changed=0; content=24576; issues=
+CLOUD_AFTER: online-a size=4096; write=134358593069363447; change=134358593071773433; creation=134358593069363447
+CLOUD_AFTER: online-b size=4096; write=134358593071448657; change=134358593081903188; creation=134358593071448657
+CLOUD_BEFORE: online-a size=4096; write=134358593086952268; change=134358593086952268; creation=134358593086952268
+CLOUD_BEFORE: online-b size=4096; write=134358593092145451; change=134358593092145451; creation=134358593092145451
+CLOUD_DOWNLOAD: fetches=2; groups=1; unchecked=False; errors=0; changed=0; content=24576; issues=
+CLOUD_AFTER: online-a size=4096; write=134358593086952268; change=134358593092209903; creation=134358593086952268
+CLOUD_AFTER: online-b size=4096; write=134358593092145451; change=134358593097386789; creation=134358593092145451
+CLOUD_BEFORE: online-a size=4096; write=134358593099777649; change=134358593099777649; creation=134358593099777649
+CLOUD_BEFORE: online-b size=4096; write=134358593100066464; change=134358593100066464; creation=134358593100066464
+CLOUD_DOWNLOAD: fetches=2; groups=1; unchecked=False; errors=0; changed=0; content=24576; issues=
+CLOUD_AFTER: online-a size=4096; write=134358593099777649; change=134358593105300074; creation=134358593099777649
+CLOUD_AFTER: online-b size=4096; write=134358593100066464; change=134358593110332208; creation=134358593100066464
+CLOUD_BEFORE: online-a size=4096; write=134358593112260766; change=134358593112260766; creation=134358593112260766
+CLOUD_BEFORE: online-b size=4096; write=134358593117275209; change=134358593117275209; creation=134358593117275209
+CLOUD_DOWNLOAD: fetches=2; groups=1; unchecked=False; errors=0; changed=0; content=24576; issues=
+CLOUD_AFTER: online-a size=4096; write=134358593112260766; change=134358593117339893; creation=134358593112260766
+CLOUD_AFTER: online-b size=4096; write=134358593117275209; change=134358593122336066; creation=134358593117275209
+CLOUD_BEFORE: online-a size=4096; write=134358593124709616; change=134358593124709616; creation=134358593124709616
+CLOUD_BEFORE: online-b size=4096; write=134358593128375460; change=134358593128375460; creation=134358593128375460
+CLOUD_DOWNLOAD: fetches=2; groups=1; unchecked=False; errors=0; changed=0; content=24576; issues=
+CLOUD_AFTER: online-a size=4096; write=134358593124709616; change=134358593128435883; creation=134358593124709616
+CLOUD_AFTER: online-b size=4096; write=134358593128375460; change=134358593131352131; creation=134358593128375460
   ok   W19 explicit online inclusion fetches actual Cloud Files content
   ok   W20 provider fetch failures are reported without false duplicate groups
   ok   W21 large online candidates retry samples after hydration closes the handle
   ok   W22 writes during cloud download cannot use the hydration metadata retry
+CLOUD_CACHE_RECONCILE: groups=1; content=8192; hits=0; USN invalidated=2; fetches=2
+  ok   W23 downloaded Cloud Files use the default policy and warm fingerprints
   ok   W5 writers remain blocked while the shell recycles all aliases
   ok   W6 long Unicode path recovery preserves identity and ADS without overwriting
   ok   W7 staged recovery refuses missing parents and junction redirection
@@ -94,4 +134,4 @@ CLOUD_AFTER: online-b size=4096; write=134358546420379201; change=13435854643340
   ok   W18 an absent source and matching original require a recorded restore intent
   ok   W10 independently recycled hard-link aliases restore their original paths
 
-86 passed, 0 failed, 0 skipped
+90 passed, 0 failed, 0 skipped

@@ -15,6 +15,11 @@ PASS UI13 recovery history restores an actual recycled file and disables repeats
 PASS UI14 pending restore cleanup remains available and completes through the history window
 RENDER_SCALE: exported 100/125/150/200 percent; does not change the desktop's actual DPI
 PASS UI15 minimum-width actions remain visible in 100/125/150/200 percent render exports
-RESULT_UI: groups=2000; selection/clear=0.086s
+RESULT_UI: groups=2000; selection/clear=0.082s
 PASS UI16 two thousand result groups support bulk selection and clearing
-15 passed, 0 failed
+CSV_SAVE_CONTROL: filename=File name:; button=Save; value=C:\a\FindCopy\FindCopy\ui-test-artifacts\dark\native-export.csv
+CSV_DIALOG_RESULT: accepted=True; path=C:\a\FindCopy\FindCopy\ui-test-artifacts\dark\native-export.csv
+CSV_WRITTEN: path=C:\a\FindCopy\FindCopy\ui-test-artifacts\dark\native-export.csv; exists=True
+CSV_EXPORT: native dialog; rows=6000; UTF-8 BOM; Unicode and semicolon paths preserved
+PASS UI17 native CSV export preserves six thousand Unicode paths and group metadata
+16 passed, 0 failed

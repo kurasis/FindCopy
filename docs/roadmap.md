@@ -7,7 +7,7 @@ Regression tests remain enabled in Linux and Windows 11 CI. All Windows jobs
 use `windows-11-arm` and require a Windows 11 client, with separate native
 ARM64 and x64 emulation coverage. Windows Server checks have been retired.
 
-Controlled real NTFS trees of five and ten million files now pass inventory,
+Controlled real NTFS trees of five and ten million files now pass on Windows 11 ARM64: inventory,
 change handling, fresh-scan comparison, and cancellation/recovery checks.
 Two fully written 50 GiB Windows files pass complete hashing, exact comparison,
 cancellation, and cache reuse. Commands, raw CSV, RAM, and limits are in
@@ -27,8 +27,14 @@ Persistent inventory replay now retains unchanged SQLite blobs and passes
 UTF-16 spans without per-entry names. The five-million-file repeat run took
 1.61 s against the earlier 12.35 s observation; at ten million it took 4.23 s
 against the earlier 24.96 s. All six phases passed at both counts. These are single runs on
-separate cloud VMs of the same reported configuration, not device calibration
+separate historical Server VMs of the same reported configuration, not device calibration
 or a guarantee for every workload. Full measurements remain in validation.
+
+The current Windows 11 scale run passed all 18 smoke/scale phases. Five/ten-million
+warm observations were 1.523/3.309 s and peaks 1,916.54/3,515.64 MiB; the
+initial ten-million inventory fill was 61.131 s. Generation took roughly 51
+minutes to five million and 47 minutes to extend it to ten million. These are
+controlled actual sparse NTFS entries, without a physical throughput guarantee.
 
 The Windows 11 mixed workload additionally covers 135,250 paths, deep Unicode
 directories, equal-size candidates, 5,000 duplicate groups and 250 hard-link

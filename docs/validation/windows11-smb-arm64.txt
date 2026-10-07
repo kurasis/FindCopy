@@ -1,5 +1,5 @@
 RUNTIME: OS=Microsoft Windows 10.0.26200; OS architecture=Arm64; process=Arm64
-FindCopy engine tests, root: C:\Users\runneradmin\AppData\Local\Temp\findcopy-tests-903fc52e
+FindCopy engine tests, root: C:\Users\runneradmin\AppData\Local\Temp\findcopy-tests-7901f257
   ok   N1 SMB Unicode long paths and exact content groups
   ok   N2 SMB hard links do not inflate physical copies or savings
   ok   N3 SMB cache reuse and changed content work without USN inventory

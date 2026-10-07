@@ -33,7 +33,7 @@ dotnet run -c Release --no-build --project tests/FindCopy.UiTests -- ui-test-art
 ```
 
 These are console runners; `dotnet test` does not execute their assertions.
-Linux reports **61 passed, 0 failed, 25 platform skips**, plus **17 acceptance
+Linux reports **64 passed, 0 failed, 26 platform skips**, plus **17 acceptance
 regressions passed**. Windows executes the native checks and WPF runner; CI
 publishes screenshots and `FindCopy.exe`. See the audit for the verified run.
 The solution includes all six projects.
