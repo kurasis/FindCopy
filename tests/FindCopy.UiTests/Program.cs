@@ -231,6 +231,13 @@ internal static class Program
                     var grid = Control<DataGrid>(recovery, "HistoryGrid");
                     Require(grid.Items.Count == 1 && (string)grid.Items[0].GetType().GetProperty("State")!.GetValue(grid.Items[0])! ==
                         "Завершить восстановление", "pending cleanup status missing");
+                    await Dispatcher.Yield(DispatcherPriority.ApplicationIdle); recovery.UpdateLayout();
+                    Require(grid.Columns[1].ActualWidth >= 250 && grid.Columns[2].ActualWidth >= 200,
+                        "original path or pending status column is too narrow");
+                    recovery.Width = recovery.MinWidth;
+                    await Dispatcher.Yield(DispatcherPriority.ApplicationIdle); recovery.UpdateLayout();
+                    Require(grid.Columns[1].ActualWidth >= 250 && grid.Columns[2].ActualWidth >= 200,
+                        "recovery columns collapse at minimum window width");
                     grid.SelectedIndex = 0;
                     Require(Control<Button>(recovery, "RestoreButton").IsEnabled, "pending cleanup retry disabled");
                     Screenshot(recovery, "pending-history.png"); Click(recovery, "RestoreButton");

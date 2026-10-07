@@ -15,7 +15,7 @@
               EnableRowVirtualization="True" RowHeaderWidth="0" GridLinesVisibility="None">
       <DataGrid.Columns>
         <DataGridTextColumn Header="Удалён" Binding="{Binding Date}" Width="145"/>
-        <DataGridTextColumn Header="Исходный путь" Binding="{Binding Entry.OriginalPath}" Width="*">
+        <DataGridTextColumn Header="Исходный путь" Binding="{Binding Entry.OriginalPath}" Width="*" MinWidth="250">
           <DataGridTextColumn.ElementStyle>
             <Style TargetType="TextBlock">
               <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
@@ -23,7 +23,7 @@
             </Style>
           </DataGridTextColumn.ElementStyle>
         </DataGridTextColumn>
-        <DataGridTextColumn Header="Состояние" Binding="{Binding State}" Width="155"/>
+        <DataGridTextColumn Header="Состояние" Binding="{Binding State}" Width="210"/>
       </DataGrid.Columns>
     </DataGrid>
     <Grid Grid.Row="2" Margin="0,12,0,0">
