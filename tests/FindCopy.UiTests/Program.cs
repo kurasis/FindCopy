@@ -3,6 +3,8 @@ using FindCopy.Core;
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -19,7 +21,6 @@ internal static class Program
     {
         _artifacts = Path.GetFullPath(args.Length == 0 ? "ui-test-artifacts" : args[0]);
         Directory.CreateDirectory(_artifacts);
-        Application.ResourceAssembly = typeof(App).Assembly;
         var app = new App(); app.InitializeComponent();
         app.StartupUri = null; app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
         app.Dispatcher.InvokeAsync(async () =>
@@ -117,6 +118,37 @@ internal static class Program
                 var dialog = new SettingsWindow(settings); dialog.Show(); dialog.Close();
                 return Task.CompletedTask;
             });
+            await Test("UI10 declining native cloud consent keeps online-only reads disabled", () =>
+            {
+                string dialogText = ""; bool dismissed = false;
+                var dismiss = new Thread(() =>
+                {
+                    var deadline = Stopwatch.StartNew();
+                    while (deadline.Elapsed < TimeSpan.FromSeconds(10))
+                    {
+                        IntPtr dialog = FindWindowW("#32770", "Облачные файлы");
+                        if (dialog != IntPtr.Zero)
+                        {
+                            GetWindowThreadProcessId(dialog, out uint process);
+                            if (process == Environment.ProcessId)
+                            {
+                                EnumChildWindows(dialog, (child, _) =>
+                                {
+                                    var text = new StringBuilder(4096); GetWindowTextW(child, text, text.Capacity);
+                                    dialogText += text + " "; return true;
+                                }, IntPtr.Zero);
+                                SendMessageW(dialog, 0x0111 /* WM_COMMAND */, new IntPtr(7) /* IDNO */, IntPtr.Zero);
+                                dismissed = true; return;
+                            }
+                        }
+                        Thread.Sleep(20);
+                    }
+                }) { IsBackground = true };
+                dismiss.Start(); Control<CheckBox>(window, "CloudBox").IsChecked = true; dismiss.Join();
+                Require(dismissed && Control<CheckBox>(window, "CloudBox").IsChecked == false &&
+                    dialogText.Contains("скачаны") && dialogText.Contains("место на диске"), "cloud warning/decline flow");
+                return Task.CompletedTask;
+            });
         }
         finally { window.Close(); Directory.Delete(root, true); }
     }
@@ -161,4 +193,10 @@ internal static class Program
         public string Notification = ""; public bool Warning;
         protected override void ShowNotification(string message, string title, bool warning) { Notification = message; Warning = warning; }
     }
+    private delegate bool EnumWindow(IntPtr window, IntPtr parameter);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr FindWindowW(string className, string title);
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint process);
+    [DllImport("user32.dll")] private static extern bool EnumChildWindows(IntPtr window, EnumWindow callback, IntPtr parameter);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowTextW(IntPtr window, StringBuilder text, int length);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr SendMessageW(IntPtr window, uint message, IntPtr value, IntPtr parameter);
 }
