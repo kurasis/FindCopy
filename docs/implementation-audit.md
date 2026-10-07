@@ -2,17 +2,17 @@
 
 ## Current status
 
-The reproduced defects from the [import audit](import-audit.md) are fixed and
-covered by passing checks. Additional functionality now includes physical
-empty-file groups, exact named-stream verification, bounded large-file
-generation, late enumeration fallback, and Windows CI. Full specification
-acceptance is still incomplete; see [the roadmap](roadmap.md).
+The reproduced import defects and remaining software capability gaps are fixed.
+USN directory inventory now avoids unchanged enumeration. Verified long paths
+can be recycled through a short same-volume staging namespace, with write
+protection and explicit recovery reporting. Windows acceptance includes real
+EFS content/access denial and non-local Cloud Files placeholders. The benchmark
+runner implements A–H and explicit metadata-memory fixtures.
 
-Validation host: Linux x64, .NET SDK 8.0.425. Windows-target compilation and
-publication were checked here. Native Windows operations were not executed on this Linux host. The remote
-[Windows CI run](https://github.com/kurasis/FindCopy/actions/runs/37594907779)
-passed the build and both console suites, including native handle staging.
-Interactive WPF behavior and actual cloud/EFS fixtures remain unvalidated.
+Linux validation uses .NET SDK 8.0.425 on Debian 13 x64. Native Windows behavior
+is validated on GitHub Actions, not inferred from Linux cross-compilation.
+Actual HDD/SATA/NVMe/network tuning and provider account integration need target
+equipment; see [acceptance follow-up](roadmap.md).
 
 ## Corrected audit findings
 
@@ -45,7 +45,7 @@ Additional reviewed paths:
   with complete name deduplication, including hash-collision handling.
 - Follow mode refuses directories with unavailable physical identity, so a
   failed identity lookup cannot disable cycle protection.
-- Cache schema 3 stores creation time. Corruption recovery is restricted to
+- Cache schema 4 stores creation time and transactional inventories. Corruption recovery is restricted to
   SQLite corruption/not-a-database errors. Malformed or incomplete USN record
   intervals fail safely to cache invalidation.
 - Empty-file results distinguish physical objects and their aliases without
@@ -60,45 +60,70 @@ and does not provide Windows mandatory share-mode guarantees.
 
 | Check | Outcome |
 | --- | --- |
-| Release solution build (five projects) | 0 warnings, 0 errors |
-| Baseline console suite | 39 passed, 0 failed, 3 platform skips |
-| Acceptance console suite | 17 assertions passed, 0 failed |
-| Remote Windows CI | Baseline: 42 passed, 0 failed, 0 skipped; acceptance: 17 passed, 0 failed; build, publish, and artifact upload passed |
-| Windows self-contained publish from Linux | `FindCopy.exe` generated; not executed |
-| Q4/Q5 sparse fixtures larger than 1 GiB | 14 × 64 KiB sampled, no full hashes, unequal files rejected |
-| Cancellation with two 101 GiB sparse candidates | Stops after initial full-read blocks; completed quick cache entries retained, no partial full hash |
-| Million-file A (`--scale 50`) | 1,000,000 discovered, zero content bytes, zero groups; 2.148 s, sampled 315 MiB working set |
-| D generation (`--scale 8 --generate-only`) | Four 2 GiB files; lengths and head/tail reads checked; not a full hashing throughput run |
-| Reduced A–D, no cache/cold fill/warm cache | 12 successful runs; warm B/C/D read zero content bytes |
+| Release solution build (six projects) | 0 warnings, 0 errors |
+| Linux baseline | 54 passed, 0 failed, 8 platform skips |
+| Linux acceptance regressions | 17 passed, 0 failed |
+| Windows core/native baseline | 62 passed, 0 failed, 0 skipped |
+| Windows acceptance regressions | 17 passed, 0 failed |
+| Windows WPF interaction acceptance | 11 passed, 0 failed |
+| Windows PowerShell hardware wrapper | 18 configurations passed; paths with spaces |
+| Incremental inventory regressions | 15 passing cases included in baseline |
+| Million physical sparse A files | 1,000,000 files; 0 content bytes; 0 groups; 2.421 s; 315.37 MiB sampled working set |
+| 100,000 physical sparse B files | 6,553,600,000 bytes = 64 KiB/file; 0 groups; 1.748 s; 86.63 MiB |
+| B fingerprint-cache warm run | 0 content bytes; 100% hits; 0.957 s; 117.00 MiB |
+| Two physical 100 GiB sparse D files | Complete BLAKE3; 214,749,020,160 content bytes; one physical duplicate group; 42.784 s; 48.18 MiB |
+| Virtual 5-million metadata records | 0 content bytes/opens; 1.442 s; 1,618.30 MiB |
+| Virtual 10-million metadata records | 0 content bytes/opens; 2.088 s; 3,126.54 MiB |
+| E–H harness smoke | 18 configurations per scenario, 72 successful runs on unknown virtual storage |
 
-The three Linux baseline skips are native NTFS compression, Windows backend
-comparison, and shell Recycle Bin behavior. The Windows baseline includes native
-sparse/compression, junction-loop, enumeration, and shell recycling paths. All 42
-Windows baseline cases passed without skips, and all 17 acceptance assertions
-passed. [Console output](validation/windows-ci.txt) records that run.
+Windows runtime/UI evidence and run links are recorded in
+[Windows validation](validation/windows-acceptance.md). The baseline includes
+real native USN reuse with zero warm directory enumeration/content I/O,
+long-path shell recycling, EFS access denial, Cloud Files placeholders,
+and blocked writers throughout recycling of all hard-link aliases.
+The eight Linux skips are Windows-only baseline/native acceptance cases.
 
-CSV evidence: [corrected A–D smoke runs](validation/linux-benchmarks-fixed.csv)
-and [million-file run](validation/linux-million-files.csv).
-[Import benchmark measurements](validation/linux-benchmarks.csv) remain historical.
-Working set is sampled during scanning, not the process lifetime peak including
-generation. The 10 ms sampler is approximate; it is not an allocation profiler.
-Linux OS-cache timings do not choose production device settings. One million
-files does not establish the specified 5–10 million-file memory envelope.
+The 15 inventory regressions cover unchanged reuse, changed parents,
+addition/deletion, aliases, subtree rename, journal reset/gap/unavailability,
+incomplete IDs, interrupted enumeration/cancellation, corruption,
+recursion switches, competing generations, and atomic USN parsing.
+[Inventory design](incremental-inventory.md) explains fallback and transaction rules.
 
-## Remaining acceptance and capability gaps
+CSV evidence: [scale acceptance](validation/linux-scale-acceptance.csv) and
+[device harness smoke](validation/linux-device-harness-smoke.csv). Storage
+labels are translated to English; numerical data is unchanged. Historical
+[correction smoke](validation/linux-benchmarks-fixed.csv),
+[million-file run](validation/linux-million-files.csv), and
+[import measurements](validation/linux-benchmarks.csv) remain available.
 
-1. **USN incremental inventory:** journals invalidate cached fingerprints, but
-   the scanner still enumerates the full tree. Avoiding unchanged-directory
-   enumeration needs a persisted inventory and recovery strategy.
-2. **Interactive Windows/cloud evidence:** the Windows build and console suites
-   passed in CI, but WPF interaction, actual OneDrive hydration, and EFS fixtures
-   still need validation. Cloud policy tests use injected attributes.
-3. **Recycle Bin long paths:** the shell backend refuses staged paths of 260
-   characters or longer. Scanning and permanent Windows handle deletion support
-   extended paths; long-path recycling is a separate missing capability.
-4. **Production-scale measurement:** scenarios E–H on HDD, SATA SSD, NVMe, and
-   network shares, cold-disk throughput, autotuning, and 5–10 million-file RAM
-   acceptance have not been measured. The 101 GiB test checks cancellation,
-   not a complete 101 GiB hash.
+## Reproduction and measurement limits
 
-The full specification must not be marked complete until these gates pass.
+The scale CSV was produced from source b05db1f3a0d56bf5942e7da6a8035228963b8d4d:
+
+```sh
+# Add --label to record the hardware/dataset description in each CSV row.
+dotnet run -c Release --no-build --project tools/FindCopy.Bench -- /tmp/scale --scenario A --metadata-files 5000000
+dotnet run -c Release --no-build --project tools/FindCopy.Bench -- /tmp/scale --scenario A --metadata-files 10000000
+dotnet run -c Release --no-build --project tools/FindCopy.Bench -- /tmp/scale --scenario B --count 100000 --cache
+dotnet run -c Release --no-build --project tools/FindCopy.Bench -- /tmp/scale --scenario D --size-mib 102400 --copies 2 --sparse
+dotnet run -c Release --no-build --project tools/FindCopy.Bench -- /tmp/scale --scenario A --count 1000000
+```
+
+The complete D run reads 200 GiB logical bytes plus ten 64 KiB quick samples.
+It proves bounded full hashing, rather than just cancellation; sparse holes
+and warm OS caches mean the elapsed time is not dense-disk bandwidth.
+The virtual fixture feeds compact unique-size metadata and throws on content
+access. It measures engine memory, not ten million native file opens or real
+path distribution. The physical million-file dataset verifies enumeration.
+
+The host reports four .NET processors and a 24,576 MiB GC memory budget. Scan
+working set is sampled every 10 ms and excludes dataset generation. Timings
+are single-run observations, not percentile statistics or a profiler trace.
+The portable backend emits zero Windows-native directory counters; this is
+not evidence of avoided Linux enumeration. B warm reuse is fingerprint reuse;
+only the native Windows USN test demonstrates avoided directory enumeration.
+
+The E–H smoke uses twelve generated sparse files and an explicitly unknown
+storage label. It validates argument handling and all tuning combinations;
+actual device acceptance follows [hardware acceptance](hardware-acceptance.md).
+No physical-device default was tuned from these cloud timings.

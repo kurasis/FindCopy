@@ -168,6 +168,9 @@ processed USN per volume. Use journal changes only for invalidation and change
 tracking, never as a content signature. Fall back to ordinary scanning after
 journal replacement, missing old records, unavailability, or inconsistency.
 The scanner must remain correct without USN or cache.
+Use persisted inventory and journal deltas to avoid enumerating unchanged
+directories. Enumerate normally whenever the previous inventory or journal
+interval cannot be trusted.
 
 ## 20. Errors
 

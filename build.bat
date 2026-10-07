@@ -34,6 +34,12 @@ if /i "%~1"=="test" (
     echo ACCEPTANCE CHECKS FAILED. Build stopped.
     goto :fail
   )
+  dotnet run -c Release --project tests\FindCopy.UiTests\FindCopy.UiTests.csproj -- ui-test-artifacts
+  if errorlevel 1 (
+    echo.
+    echo UI CHECKS FAILED. Build stopped.
+    goto :fail
+  )
 )
 
 echo.

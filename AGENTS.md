@@ -19,3 +19,8 @@
   `docs/implementation-audit.md` for remaining specification gaps.
 - WPF and native Windows filesystem operations require Windows runtime
   validation. A Linux cross-build is compilation evidence only.
+- On Windows, also run `dotnet run -c Release --project tests/FindCopy.UiTests`.
+  The WPF runner emits screenshots and exercises real scanning, controls,
+  cancellation, cloud consent, settings, and recovery reporting.
+- Distinguish virtual metadata, sparse logical reads, physical disk throughput,
+  and OS cache state. Use `docs/hardware-acceptance.md` for device measurements.

@@ -1,26 +1,26 @@
-# Remaining Implementation Work
+# Acceptance Follow-up
 
-The first correction pass resolves the reproduced import defects and adds
-missing validation and scanner functionality. Continue in this order:
+The remaining software work identified in the import audit has been implemented:
+persistent USN directory reuse, long-path verified recycling, native EFS/cloud
+fixtures, automated WPF interaction checks, and benchmark scenarios A–H.
+Regression tests remain enabled in Linux and Windows CI.
 
-1. Extend the passing Windows console-suite CI with interactive WPF validation.
-   Check staged recovery and UI reporting, and add actual OneDrive and EFS
-   acceptance fixtures on a suitable Windows host. Record unsupported
-   capabilities explicitly and keep native regression CI enabled.
-2. Implement a persistent USN inventory keyed by volume and file/directory IDs.
-   Record parent/name relationships and root membership. Apply journal deltas
-   before traversal; enumerate affected directories while reusing unchanged
-   inventory. Journal reset, gaps, unsupported records, inaccessible volumes,
-   and uncertain rename pairs must trigger full enumeration. Acceptance must
-   measure avoided enumeration and compare results against a fresh full scan.
-3. Replace the limited shell recycling API with a long-path-capable operation
-   that retains the verified staging contract and recovery reporting. Test
-   original-name reuse, unavailable bins, cancellation, and failed shell moves.
-4. Run specification-scale workloads on actual devices: 5–10 million-file
-   metadata RAM, complete 10–100 GiB streaming hashes, and scenarios E–H for
-   HDD/SATA/NVMe/network. Report content I/O and elapsed time with cache state,
-   hardware, concurrency, and buffer settings; use those results to tune defaults.
+The following deployment evidence needs equipment or services outside this
+cloud workspace:
 
-Both console suites must remain passing. Keep Linux compilation, injected
-filesystem behavior, native Windows execution, and device measurements distinct
-when reporting progress.
+1. Run E–H against actual HDD, SATA SSD, NVMe, and network datasets, including
+   documented cold and warm OS-cache conditions. Follow
+   [hardware acceptance](hardware-acceptance.md). Keep conservative defaults
+   until those measurements justify changing them.
+2. Confirm provider-specific download behavior with a signed-in OneDrive or
+   other Cloud Files provider. Native non-local Cloud Files placeholders and
+   the consent dialog are covered; account/network service integration is
+   separate from the default no-hydration policy.
+3. Measure a representative 5–10 million-file physical tree, including real
+   path distributions and cache storage. The virtual 10-million-record fixture
+   proves engine memory behavior, while the physical million-file fixture
+   proves enumeration and zero-content-I/O behavior at that scale.
+
+Complete logical hashing of two 100 GiB sparse files has passed. Sparse reads
+do not establish dense-file disk bandwidth. See the
+[implementation audit](implementation-audit.md) for recorded evidence and limits.

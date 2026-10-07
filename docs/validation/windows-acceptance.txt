@@ -1,0 +1,120 @@
+Windows CI 37603823850
+Source: 4db11654eabe57e6f239aa3cbb31b0b62c1127cb
+Filtered build and assertion output; full logs remain in Actions.
+
+2026-10-07T09:55:25.6641059Z Build succeeded.
+2026-10-07T09:55:25.6642515Z     0 Warning(s)
+2026-10-07T09:55:25.6642839Z     0 Error(s)
+2026-10-07T09:55:29.0633611Z   ok   01 same bytes, different names/extensions/timestamps -> duplicate
+2026-10-07T09:55:29.1684140Z   ok   02 same size, different first bytes -> rejected at Q1, no full hash
+2026-10-07T09:55:29.1861019Z   ok   03 same size and start, different end -> rejected at Q2
+2026-10-07T09:55:29.3843265Z   ok   03b large files, same header/footer, different middle -> rejected at Q3
+2026-10-07T09:55:29.9375318Z   ok   04 identical samples, one byte differs outside samples -> full hash detects
+2026-10-07T09:55:30.1082824Z   ok   05 forced hash collision -> ExactVerifier separates files
+2026-10-07T09:55:30.1144341Z   ok   06 two hard links of one object -> not a duplicate
+2026-10-07T09:55:30.1203451Z   ok   07 hard link + real copy -> one redundant physical copy
+2026-10-07T09:55:30.1718252Z   ok   08 directory link loop -> no infinite recursion
+2026-10-07T09:55:30.1747183Z   ok   09 symlink to a file inside the tree -> not a second copy
+2026-10-07T09:55:30.2315822Z   ok   10 file modified during full hash -> CHANGED_DURING_SCAN
+2026-10-07T09:55:30.2484083Z   ok   11 file deleted during scan -> status, scan continues
+2026-10-07T09:55:30.2548957Z   ok   12 access denied -> scan continues
+2026-10-07T09:55:30.2712405Z   ok   13 sparse and regular file with same logical content -> duplicate
+2026-10-07T09:55:30.2934499Z   ok   14 NTFS compressed and uncompressed logical-equivalent files
+2026-10-07T09:55:30.2982432Z   ok   15 zero-byte files -> separate list, reclaimable 0
+2026-10-07T09:55:30.3034044Z   ok   16 Unicode paths
+2026-10-07T09:55:30.3155217Z   ok   17 paths longer than 260 chars
+2026-10-07T09:55:34.5442051Z   ok   18 many files with unique sizes -> zero content I/O
+2026-10-07T09:55:34.5500797Z   ok   19 online-only cloud file -> not read by default
+2026-10-07T09:55:35.8656071Z   ok   20 cancel during large file read -> clean stop
+2026-10-07T09:55:35.8712188Z   ok   21 non-recursive mode ignores subfolders
+2026-10-07T09:55:35.8749011Z   ok   22 system files are skipped
+2026-10-07T09:55:35.8777106Z   ok   23 overlapping roots are not scanned twice
+2026-10-07T09:55:35.8807878Z   ok   24 excluded (system) directories are not descended into
+2026-10-07T09:55:36.2678117Z   ok   25 cache: repeat scan reads no content, same result
+2026-10-07T09:55:36.3474754Z   ok   26 cache: changed file is re-hashed, never a false duplicate
+2026-10-07T09:55:36.4346204Z   ok   27 cache: damaged cache file is rebuilt
+2026-10-07T09:55:37.0206182Z   ok   28 cache: cancelled scan leaves a consistent cache
+2026-10-07T09:55:37.1198132Z   ok   29 USN journal: reported change invalidates cache entry; journal reset drops volume
+2026-10-07T09:55:39.0123739Z   ok   30 NVMe autotune path: concurrent full reads stay correct
+2026-10-07T09:55:39.0462671Z   ok   31 alternate streams mode: named streams must match too
+2026-10-07T09:55:39.1594287Z   ok   32 cache: changed sample size ignores cached quick hashes, keeps full hashes
+2026-10-07T09:55:39.1709152Z   ok   33 enumeration backends agree (FileIdExtdDirectoryInfo vs FindFirstFileExW)
+2026-10-07T09:55:39.2069594Z   ok   D1 delete selected copies, keep one
+2026-10-07T09:55:39.6586957Z   ok   D2 never delete every copy of a group
+2026-10-07T09:55:39.6627882Z   ok   D3 file changed after the scan is not deleted
+2026-10-07T09:55:39.6667720Z   ok   D4 kept copy gone after the scan -> nothing deleted
+2026-10-07T09:55:39.6709204Z   ok   D5 Recycle Bin unavailable -> nothing deleted silently
+2026-10-07T09:55:39.6747002Z   ok   D6 deleting a copy also removes its hard links
+2026-10-07T09:55:39.6768052Z   ok   D7 same file under two paths is never deleted as its own duplicate
+2026-10-07T09:55:39.8806376Z   ok   D8 Recycle Bin mode on a fixed drive
+2026-10-07T09:55:39.9784063Z   ok   I1 unchanged inventory avoids directory enumeration and content reads
+2026-10-07T09:55:40.0690602Z   ok   I2 only modified parents are enumerated
+2026-10-07T09:55:40.1622866Z   ok   I3 creation and deletion update inventory membership
+2026-10-07T09:55:40.2437316Z   ok   I4 a changed hard link refreshes every cached alias parent
+2026-10-07T09:55:40.3285356Z   ok   I5 renamed directories refresh their descendant paths
+2026-10-07T09:55:40.4113678Z   ok   I6 journal replacement requires complete enumeration
+2026-10-07T09:55:40.5134865Z   ok   I7 journal gaps and failed interval reads require complete enumeration
+2026-10-07T09:55:40.5984304Z   ok   I8 unavailable journals use ordinary scanning
+2026-10-07T09:55:40.6760199Z   ok   I9 entries without bulk IDs are never reused
+2026-10-07T09:55:40.7748657Z   ok   I10 incomplete enumeration does not advance the inventory checkpoint
+2026-10-07T09:55:40.8597910Z   ok   I11 cancellation does not commit a partially staged inventory
+2026-10-07T09:55:40.9442744Z   ok   I12 damaged listing payloads fall back before emitting entries
+2026-10-07T09:55:41.0351305Z   ok   I13 switching recursion cannot reuse an incomplete subtree
+2026-10-07T09:55:41.1599654Z   ok   I14 a newer concurrent checkpoint cannot be overwritten
+2026-10-07T09:55:41.1611040Z   ok   I15 USN packets validate parent identities, bounds, and versions atomically
+2026-10-07T09:55:41.2034307Z   ok   W1 native long-path verified recycling
+2026-10-07T09:55:41.3111275Z   ok   W2 native USN warm scan avoids unchanged directory enumeration
+2026-10-07T09:55:41.7395079Z   ok   W3 native EFS logical content and access denial
+2026-10-07T09:55:42.0899340Z   ok   W4 native Cloud Files placeholder is never hydrated by default
+2026-10-07T09:55:42.7957505Z   ok   W5 writers remain blocked while the shell recycles all aliases
+2026-10-07T09:55:44.2181102Z 62 passed, 0 failed, 0 skipped
+2026-10-07T09:55:45.5854677Z   PASS R5: fixed metadata meets the approximate 128-byte target
+2026-10-07T09:55:45.6602557Z   PASS R1: appended unequal tails must not receive EXACT_MATCH
+2026-10-07T09:55:45.7690259Z   PASS R2: a changed cached candidate must not remain a duplicate
+2026-10-07T09:55:45.7727501Z   PASS R3: unavailable snapshots are reported before content I/O
+2026-10-07T09:55:45.7728256Z   PASS R3: unavailable snapshots must not allow a modified file to match
+2026-10-07T09:55:45.7752633Z SKIP_QUALIFIER: skipped=1, issues=1, hasUnchecked=True
+2026-10-07T09:55:45.7753295Z   PASS R4: skipped files require a qualified completeness result
+2026-10-07T09:55:45.7859720Z   PASS R6: an outside hard link means no physical space was freed
+2026-10-07T09:55:45.7924240Z   PASS R7: a replacement at an alias path must survive deletion
+2026-10-07T09:55:45.7927030Z   PASS late enumeration fallback emits each file once
+2026-10-07T09:55:45.7951064Z   PASS follow mode fails safely without directory identity
+2026-10-07T09:55:45.8106880Z   PASS Q4/Q5 run only for surviving large candidates
+2026-10-07T09:55:45.8637833Z   PASS 101 GiB cancellation preserves completed quick cache entries only
+2026-10-07T09:55:45.8787282Z   PASS streamed generator preserves non-aligned lengths
+2026-10-07T09:55:45.8809300Z   PASS stable unequal tails remain unequal on a subsequent scan
+2026-10-07T09:55:45.8929913Z   PASS recycling uses the verified staged object and preserves replacements
+2026-10-07T09:55:45.8966578Z   PASS a keeper changed since scan cannot authorize deletion
+2026-10-07T09:55:45.9012403Z   PASS empty duplicates have physical groups without content I/O
+2026-10-07T09:55:45.9183287Z 17 passed, 0 failed
+2026-10-07T09:55:48.2341468Z PASS UI1 real search binds duplicate and empty-file results
+2026-10-07T09:55:48.2381316Z PASS UI2 selection controls retain one copy and clear selection
+2026-10-07T09:55:48.2386805Z PASS UI3 checking every copy is rejected by the bound group model
+2026-10-07T09:55:48.2388620Z PASS UI4 empty-file visibility follows the checkbox
+2026-10-07T09:55:48.2869629Z PASS UI5 staged recovery warnings remain visible after a removed source
+2026-10-07T09:55:48.3914433Z PASS UI6 a failed deletion preserves group membership and selection
+2026-10-07T09:55:48.4529382Z PASS UI7 native policy exclusions qualify no-duplicate wording
+2026-10-07T09:55:48.4772667Z PASS UI8 cancelling a real scan restores controls and hides partial results
+2026-10-07T09:55:48.5339421Z PASS UI9 sanitized performance settings form valid scanner options
+2026-10-07T09:55:48.5697711Z PASS UI10 declining native cloud consent keeps online-only reads disabled
+2026-10-07T09:55:48.6927552Z PASS UI11 deletion controls remain visible at minimum window width
+2026-10-07T09:55:48.7431281Z 11 passed, 0 failed
+2026-10-07T09:55:51.6788965Z E nocache: 4 files, 0.066s, 52 content bytes, 32 MiB, 1 groups, readers=1, threshold=256, buffer=1024
+2026-10-07T09:55:51.6837453Z E nocache: 4 files, 0.002s, 52 content bytes, 33 MiB, 1 groups, readers=1, threshold=256, buffer=4096
+2026-10-07T09:55:51.6870556Z E nocache: 4 files, 0.002s, 52 content bytes, 33 MiB, 1 groups, readers=1, threshold=1024, buffer=1024
+2026-10-07T09:55:51.6904506Z E nocache: 4 files, 0.002s, 52 content bytes, 33 MiB, 1 groups, readers=1, threshold=1024, buffer=4096
+2026-10-07T09:55:51.6938194Z E nocache: 4 files, 0.002s, 52 content bytes, 33 MiB, 1 groups, readers=1, threshold=4096, buffer=1024
+2026-10-07T09:55:51.6972995Z E nocache: 4 files, 0.002s, 52 content bytes, 33 MiB, 1 groups, readers=1, threshold=4096, buffer=4096
+2026-10-07T09:55:51.7012148Z E nocache: 4 files, 0.002s, 52 content bytes, 33 MiB, 1 groups, readers=2, threshold=256, buffer=1024
+2026-10-07T09:55:51.7047807Z E nocache: 4 files, 0.002s, 52 content bytes, 33 MiB, 1 groups, readers=2, threshold=256, buffer=4096
+2026-10-07T09:55:51.7085865Z E nocache: 4 files, 0.002s, 52 content bytes, 33 MiB, 1 groups, readers=2, threshold=1024, buffer=1024
+2026-10-07T09:55:51.7120656Z E nocache: 4 files, 0.002s, 52 content bytes, 33 MiB, 1 groups, readers=2, threshold=1024, buffer=4096
+2026-10-07T09:55:51.7158028Z E nocache: 4 files, 0.002s, 52 content bytes, 33 MiB, 1 groups, readers=2, threshold=4096, buffer=1024
+2026-10-07T09:55:51.7190715Z E nocache: 4 files, 0.002s, 52 content bytes, 33 MiB, 1 groups, readers=2, threshold=4096, buffer=4096
+2026-10-07T09:55:51.7232955Z E nocache: 4 files, 0.002s, 52 content bytes, 33 MiB, 1 groups, readers=4, threshold=256, buffer=1024
+2026-10-07T09:55:51.7276420Z E nocache: 4 files, 0.003s, 52 content bytes, 33 MiB, 1 groups, readers=4, threshold=256, buffer=4096
+2026-10-07T09:55:51.7316297Z E nocache: 4 files, 0.002s, 52 content bytes, 33 MiB, 1 groups, readers=4, threshold=1024, buffer=1024
+2026-10-07T09:55:51.7355362Z E nocache: 4 files, 0.002s, 52 content bytes, 33 MiB, 1 groups, readers=4, threshold=1024, buffer=4096
+2026-10-07T09:55:51.7395411Z E nocache: 4 files, 0.002s, 52 content bytes, 33 MiB, 1 groups, readers=4, threshold=4096, buffer=1024
+2026-10-07T09:55:51.7435684Z E nocache: 4 files, 0.003s, 52 content bytes, 33 MiB, 1 groups, readers=4, threshold=4096, buffer=4096
+2026-10-07T09:55:51.7436378Z Results: D:\a\_temp\FindCopy wrapper results\bench-results-v3.csv
