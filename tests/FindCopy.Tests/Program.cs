@@ -49,6 +49,14 @@ const int MiB = 1 << 20;
 bool canStat = OperatingSystem.IsWindows() || (OperatingSystem.IsLinux() && RuntimeInformation.ProcessArchitecture == Architecture.X64);
 
 Console.WriteLine("FindCopy engine tests, root: " + root);
+if (args.Contains("--network-only"))
+{
+    if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("SMB acceptance requires Windows");
+    try { NetworkAcceptanceTests.Run(Test, root, Environment.GetEnvironmentVariable("FINDCOPY_SMB_ROOT") ?? throw new InvalidOperationException("Missing FINDCOPY_SMB_ROOT")); }
+    finally { Directory.Delete(root, recursive: true); }
+    Console.WriteLine($"{passed} passed, {failed} failed, {skipped} skipped");
+    return failed == 0 ? 0 : 1;
+}
 
 Test("01 same bytes, different names/extensions/timestamps -> duplicate", () =>
 {

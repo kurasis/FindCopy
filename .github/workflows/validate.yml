@@ -36,7 +36,12 @@ jobs:
         run: dotnet build FindCopy.sln -c Release -m:2
       - name: Build self-contained Windows binaries
         if: runner.os == 'Windows'
-        run: dotnet build FindCopy.sln -c Release -m:2 -p:RuntimeIdentifier=${{ matrix.runtime }} -p:SelfContained=true
+        run: |
+          $projects = @('tests/FindCopy.Tests', 'tests/FindCopy.Audit', 'tests/FindCopy.UiTests')
+          foreach ($project in $projects) {
+            dotnet build $project -c Release -m:2 -p:RuntimeIdentifier=${{ matrix.runtime }} -p:SelfContained=true
+            if ($LASTEXITCODE -ne 0) { throw "Build failed: $project" }
+          }
       - name: Baseline correctness suite
         if: runner.os != 'Windows'
         run: dotnet run -c Release --no-build --project tests/FindCopy.Tests
@@ -52,6 +57,14 @@ jobs:
       - name: WPF interaction and recovery reporting
         if: runner.os == 'Windows'
         run: ./tests/FindCopy.UiTests/bin/Release/net8.0-windows10.0.17763.0/${{ matrix.runtime }}/FindCopy.UiTests.exe ui-test-artifacts
+      - name: Actual SMB UNC correctness and H sweep
+        if: runner.os == 'Windows'
+        run: ./tools/test-smb.ps1 -TestsExe tests/FindCopy.Tests/bin/Release/net8.0/${{ matrix.runtime }}/FindCopy.Tests.exe -BenchExe tools/FindCopy.Bench/bin/Release/net8.0/${{ matrix.runtime }}/FindCopy.Bench.exe -OutputDirectory smb-artifacts
+      - uses: actions/upload-artifact@v4
+        if: always() && runner.os == 'Windows'
+        with:
+          name: FindCopy-smb-${{ matrix.runtime }}
+          path: smb-artifacts
       - name: Hardware acceptance wrapper smoke
         if: runner.os == 'Windows'
         shell: pwsh
