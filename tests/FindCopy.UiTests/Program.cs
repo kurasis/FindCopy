@@ -8,6 +8,7 @@ using System.Text;
 using System.Security.Principal;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Automation;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -293,7 +294,7 @@ internal static class Program
                 {
                     System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(bytes, i);
                     string d = Path.Combine(directory, "group-" + i); Directory.CreateDirectory(d);
-                    foreach (string name in new[] { "a", "b", "c" }) File.WriteAllBytes(Path.Combine(d, name), bytes);
+                    foreach (string name in new[] { "копия;a", "copy;b", "copy;c" }) File.WriteAllBytes(Path.Combine(d, name), bytes);
                 }
                 await Search(window, directory);
                 Require(Groups(window).Count == groups && Control<TreeView>(window, "ResultTree").Items.Count == groups,
@@ -312,6 +313,35 @@ internal static class Program
                 Console.WriteLine($"RESULT_UI: groups={groups}; selection/clear={watch.Elapsed.TotalSeconds:F3}s");
                 Screenshot(window, "many-results.png");
             });
+            await Test("UI17 native CSV export preserves six thousand Unicode paths and group metadata", () =>
+            {
+                var result = Result(window);
+                Require(result.Groups.Count == 2000, "export requires the large-result fixture");
+                string output = Path.Combine(_artifacts, "native-export.csv"); File.Delete(output);
+                SaveNativeCsv(window, output);
+                var bytes = File.ReadAllBytes(output);
+                Require(bytes.AsSpan(0, 3).SequenceEqual(new byte[] { 0xEF, 0xBB, 0xBF }), "CSV lacks UTF-8 BOM");
+                using var parser = new Microsoft.VisualBasic.FileIO.TextFieldParser(output, Encoding.UTF8);
+                parser.SetDelimiters(";"); parser.HasFieldsEnclosedInQuotes = true;
+                var header = parser.ReadFields();
+                Require(header?.Length == 7 && header[1] == "Путь" && header[5] == "BLAKE3", "CSV header");
+                var expected = result.Groups.SelectMany(g => g.Files.Select(f => (g, f)))
+                    .ToDictionary(x => x.f.Path, StringComparer.Ordinal);
+                int rows = 0;
+                while (!parser.EndOfData)
+                {
+                    var row = parser.ReadFields()!;
+                    Require(row.Length == 7, "CSV field count");
+                    Require(expected.Remove(row[1], out var member), "missing, duplicate or incorrectly quoted CSV path");
+                    Require(row[0] == member.g.GroupId.ToString() && row[2] == member.f.LogicalSize.ToString() &&
+                        row[5] == member.g.Hash && row[6] == "", "CSV group/size/hash/alias columns");
+                    Require(row[4] == (member.g.Verification == VerificationState.ExactMatch ? "EXACT_MATCH" : "HASH_MATCH"), "CSV verification state");
+                    rows++;
+                }
+                Require(rows == 6000 && expected.Count == 0, "CSV omitted results");
+                Console.WriteLine($"CSV_EXPORT: native dialog; rows={rows}; UTF-8 BOM; Unicode and semicolon paths preserved");
+                return Task.CompletedTask;
+            });
             if (_published != null)
                 await Test("UI12 published executable scans, recycles, and restores a selected copy", async () =>
                 {
@@ -328,6 +358,52 @@ internal static class Program
         Click(window, "SearchButton");
         await Wait(() => Field<CancellationTokenSource?>(window, "_cts") == null);
         Require(Field<ScanResult?>(window, "_result") != null, "search produced no result");
+    }
+
+    private static void SaveNativeCsv(MainWindow window, string output)
+    {
+        bool submitted = false; string diagnostic = "";
+        var driver = new Thread(() =>
+        {
+            var deadline = Stopwatch.StartNew();
+            while (deadline.Elapsed < TimeSpan.FromSeconds(20))
+            {
+                IntPtr dialog = FindWindowW("#32770", "Сохранить отчёт");
+                if (dialog != IntPtr.Zero)
+                {
+                    GetWindowThreadProcessId(dialog, out uint process);
+                    if (process == Environment.ProcessId)
+                    {
+                        try
+                        {
+                            var element = AutomationElement.FromHandle(dialog);
+                            var edit = element.FindFirst(TreeScope.Descendants, new AndCondition(
+                                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit),
+                                new PropertyCondition(AutomationElement.AutomationIdProperty, "1001")));
+                            var save = element.FindFirst(TreeScope.Descendants, new AndCondition(
+                                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
+                                new PropertyCondition(AutomationElement.AutomationIdProperty, "1")));
+                            if (edit != null && save != null && save.Current.IsEnabled)
+                            {
+                                ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue(output);
+                                ((InvokePattern)save.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
+                                submitted = true; return;
+                            }
+                            diagnostic = "Native filename or Save control is not ready";
+                        }
+                        catch (Exception ex) { diagnostic = ex.Message; }
+                        if (deadline.Elapsed >= TimeSpan.FromSeconds(18))
+                        {
+                            PostMessageW(dialog, 0x0111 /* WM_COMMAND */, new IntPtr(2) /* IDCANCEL */, IntPtr.Zero);
+                            return;
+                        }
+                    }
+                }
+                Thread.Sleep(20);
+            }
+        }) { IsBackground = true };
+        driver.Start(); Click(window, "ExportButton"); driver.Join();
+        Require(submitted && File.Exists(output), "Native CSV save failed: " + diagnostic);
     }
     private static async Task Wait(Func<bool> ready)
     {
@@ -363,4 +439,5 @@ internal static class Program
     [DllImport("user32.dll")] private static extern bool EnumChildWindows(IntPtr window, EnumWindow callback, IntPtr parameter);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern int GetWindowTextW(IntPtr window, StringBuilder text, int length);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] private static extern IntPtr SendMessageW(IntPtr window, uint message, IntPtr value, IntPtr parameter);
+    [DllImport("user32.dll")] private static extern bool PostMessageW(IntPtr window, uint message, IntPtr value, IntPtr parameter);
 }
