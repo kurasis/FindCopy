@@ -131,6 +131,19 @@ static class WindowsAcceptanceTests
             Require(r.Groups.Count == 0 && r.HasUncheckedFiles && r.Counters.ChangedFiles >= 1,
                 "concurrent cloud write was accepted");
         });
+        test("W23 downloaded Cloud Files use the default policy and warm fingerprints", () =>
+        {
+            string d = Path.Combine(root, "cloud-warm"); Directory.CreateDirectory(d);
+            using var cloud = new CloudFixture(d); cloud.Connect();
+            string cache = Path.Combine(root, "cloud-warm-cache.db");
+            var first = new ScanController().RunAsync(new ScanOptions { Roots = new[] { d }, IncludeOnlineOnlyFiles = true,
+                ExactVerification = true, CachePath = cache }, default).GetAwaiter().GetResult();
+            Require(first.Groups.Count == 1 && !first.HasUncheckedFiles, "hydrated cache fill: " + string.Join("; ", first.Issues));
+            int fetches = cloud.Fetches;
+            var warm = new ScanController().RunAsync(new ScanOptions { Roots = new[] { d }, CachePath = cache }, default).GetAwaiter().GetResult();
+            Require(warm.Groups.Count == 1 && !warm.HasUncheckedFiles && warm.Counters.ContentBytesRead == 0 &&
+                warm.Counters.CacheHits == 2 && cloud.Fetches == fetches, "warm cloud scan skipped local data, reread content, or fetched again: " + string.Join("; ", warm.Issues));
+        });
         test("W5 writers remain blocked while the shell recycles all aliases", () =>
         {
             string d = Path.Combine(root, "recycle-guard"); Directory.CreateDirectory(d);

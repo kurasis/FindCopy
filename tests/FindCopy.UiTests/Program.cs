@@ -381,17 +381,27 @@ internal static class Program
                                 new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit),
                                 new PropertyCondition(AutomationElement.AutomationIdProperty, "1001")));
                             var save = element.FindFirst(TreeScope.Descendants, new AndCondition(
-                                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
-                                new PropertyCondition(AutomationElement.AutomationIdProperty, "1")));
+                                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button), new OrCondition(
+                                new PropertyCondition(AutomationElement.NameProperty, "Save"),
+                                new PropertyCondition(AutomationElement.NameProperty, "Сохранить"))));
                             if (edit != null && save != null && save.Current.IsEnabled)
                             {
+                                edit.SetFocus();
                                 ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue(output);
+                                save.SetFocus();
+                                diagnostic = $"filename={edit.Current.Name}; button={save.Current.Name}; value={((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).Current.Value}";
+                                Console.WriteLine("CSV_SAVE_CONTROL: " + diagnostic);
+                                submitted = true;
                                 ((InvokePattern)save.GetCurrentPattern(InvokePattern.Pattern)).Invoke();
-                                submitted = true; return;
+                                return;
                             }
-                            diagnostic = "Native filename or Save control is not ready";
+                            var controls = element.FindAll(TreeScope.Descendants, new OrCondition(
+                                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit),
+                                new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button)));
+                            diagnostic = string.Join("; ", controls.Cast<AutomationElement>().Select(c => c.Current.AutomationId + ":" + c.Current.Name));
                         }
                         catch (Exception ex) { diagnostic = ex.Message; }
+                        if (submitted && File.Exists(output)) return;
                         if (deadline.Elapsed >= TimeSpan.FromSeconds(18))
                         {
                             PostMessageW(dialog, 0x0111 /* WM_COMMAND */, new IntPtr(2) /* IDCANCEL */, IntPtr.Zero);
@@ -403,7 +413,7 @@ internal static class Program
             }
         }) { IsBackground = true };
         driver.Start(); Click(window, "ExportButton"); driver.Join();
-        Require(submitted && File.Exists(output), "Native CSV save failed: " + diagnostic);
+        Require(submitted && File.Exists(output), $"Native CSV save failed: submitted={submitted}; exists={File.Exists(output)}; {diagnostic}");
     }
     private static async Task Wait(Func<bool> ready)
     {

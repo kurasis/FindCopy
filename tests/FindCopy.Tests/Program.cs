@@ -706,8 +706,20 @@ if (canStat)
         Check(r.Groups.Count == 0 && r.HasUncheckedFiles && r.Counters.ChangedFiles >= 1, "old cloud hash authorized different bytes");
         Check(File.ReadAllBytes(Path.Combine(d, "a"))[0] != data[0], "mutation did not occur");
     });
+    Test("C3 a verified late cloud version is reusable from the fingerprint cache", () =>
+    {
+        var d = NewDir("cloud-late-cache"); var data = Rand(4096, 923);
+        File.WriteAllBytes(Path.Combine(d, "a"), data); File.WriteAllBytes(Path.Combine(d, "b"), data);
+        var fs = new DelayedCloudMetadataFs(OperatingSystem.IsWindows() ? new WindowsFileSystem() : new PortableFileSystem());
+        string cache = Path.Combine(root, "cloud-late-cache.db");
+        var first = Scan(d, o => { o.IncludeOnlineOnlyFiles = true; o.ExactVerification = true; o.CachePath = cache; }, fs: fs);
+        Check(first.Groups.Count == 1 && !first.HasUncheckedFiles, "cache fill lost the hydrated group");
+        var warm = Scan(d, o => { o.IncludeOnlineOnlyFiles = true; o.CachePath = cache; }, fs: fs);
+        Check(warm.Groups.Count == 1 && !warm.HasUncheckedFiles && warm.Counters.ContentBytesRead == 0 && warm.Counters.CacheHits == 2,
+            "verified late fingerprints were stored under an obsolete version");
+    });
 }
-else { skipped += 2; Console.WriteLine("  SKIP C1-C2 require physical file identity"); }
+else { skipped += 3; Console.WriteLine("  SKIP C1-C3 require physical file identity"); }
 
 IncrementalTests.Run(Test, root);
 RecoveryTests.Run(Test, root);
@@ -716,7 +728,7 @@ if (OperatingSystem.IsWindows())
     WindowsAcceptanceTests.Run(Test, root);
     WindowsAcceptanceTests.RunRecovery(Test, root);
 }
-else { skipped += 22; Console.WriteLine("  SKIP W1-W22 native filesystem and recovery checks require Windows"); }
+else { skipped += 23; Console.WriteLine("  SKIP W1-W23 native filesystem and recovery checks require Windows"); }
 try { Directory.Delete(root, true); } catch { }
 if (OperatingSystem.IsWindows() && !string.IsNullOrEmpty(expectedArchitecture) && skipped != 0)
 {

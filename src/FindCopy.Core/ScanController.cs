@@ -191,6 +191,7 @@ internal sealed class ScanRun
             .Where(g => g.Members.Length >= 2).ToList();
         Interlocked.Exchange(ref _c.HashMatchGroups, verified.Count);
         Interlocked.Exchange(ref _c.ExactMatchGroups, verified.Count(g => g.State == VerificationState.ExactMatch));
+        StoreHydrationRechecks(verified);
         foreach (int rec in _zeroGroups.SelectMany(g => g)) ValidateVersion(rec);
         _zeroGroups = _zeroGroups.Select(g => g.Where(i => _records[i].Status == FileStatus.Ok).ToArray()).Where(g => g.Length >= 2).ToList();
         Phase("Готово");
@@ -919,6 +920,21 @@ internal sealed class ScanRun
             var e = new CacheEntry { FullHash = _fullHashes.AsSpan(r.FullHashSlot * 32, 32).ToArray() };
             batch.Add((KeyOf(i, mt, ct), e));
         }
+        Write(batch);
+    }
+
+    private void StoreHydrationRechecks(List<(int[] Members, VerificationState State)> verified)
+    {
+        if (_cache == null || !_opt.IncludeOnlineOnlyFiles) return;
+        var batch = new List<(CacheKey, CacheEntry)>();
+        foreach (int rec in verified.SelectMany(g => g.Members).Distinct())
+        {
+            ref var r = ref _records[rec];
+            if ((r.Flags & FileRecord.FlagHydrationRechecked) == 0) continue;
+            batch.Add((KeyOf(rec, r.LastWriteTicks, r.ChangeTicks),
+                new CacheEntry { FullHash = _fullHashes.AsSpan(r.FullHashSlot * 32, 32).ToArray() }));
+        }
+        // Exact verification workers have joined. Cache writes stay on this thread.
         Write(batch);
     }
 
