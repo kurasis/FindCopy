@@ -30,9 +30,9 @@ public sealed class CacheEntry
 /// and only complete hashes are ever written, so a cancelled scan cannot corrupt the cache.
 /// Not thread-safe: the scanner calls it from its orchestration thread only.
 /// </summary>
-public sealed class ScanCache : IDisposable
+public sealed partial class ScanCache : IDisposable
 {
-    public const int SchemaVersion = 3;
+    public const int SchemaVersion = 4;
     public const int HashAlgorithmVersion = 1;      // 1 = XXH3_64 quick, BLAKE3-256 full
     private const int PruneAfterDays = 180;
 
@@ -82,7 +82,7 @@ public sealed class ScanCache : IDisposable
         string? ver = Scalar("SELECT value FROM meta WHERE key='schema';") as string;
         if (ver != SchemaVersion.ToString())
         {
-            Exec("DROP TABLE IF EXISTS files; DROP TABLE IF EXISTS usn;");
+            Exec("DROP TABLE IF EXISTS files; DROP TABLE IF EXISTS usn; DROP TABLE IF EXISTS inventory_roots; DROP TABLE IF EXISTS inventory_dirs;");
             Exec("INSERT OR REPLACE INTO meta(key,value) VALUES('schema','" + SchemaVersion + "');");
         }
         Exec(@"CREATE TABLE IF NOT EXISTS files(
@@ -96,6 +96,7 @@ public sealed class ScanCache : IDisposable
                CREATE UNIQUE INDEX IF NOT EXISTS ix_files_id ON files(vol, fid_lo, fid_hi) WHERE has_id = 1;
                CREATE UNIQUE INDEX IF NOT EXISTS ix_files_path ON files(path_key) WHERE has_id = 0;
                CREATE TABLE IF NOT EXISTS usn(vol INTEGER PRIMARY KEY, journal_id INTEGER NOT NULL, next_usn INTEGER NOT NULL);");
+        InitInventorySchema();
         Exec($"DELETE FROM files WHERE seen < {Today() - PruneAfterDays};");
     }
 
@@ -299,7 +300,7 @@ public sealed class ScanCache : IDisposable
 
     public void Clear()
     {
-        Exec("DELETE FROM files; DELETE FROM usn;");
+        Exec("DELETE FROM files; DELETE FROM usn; DELETE FROM inventory_roots; DELETE FROM inventory_dirs;");
         Exec("VACUUM;");
     }
 

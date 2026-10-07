@@ -405,7 +405,6 @@ public sealed unsafe class WindowsDeletionBackend : IDeletionBackend
         error = null;
         string directory = Path.Combine(Path.GetDirectoryName(originalPath)!, ".FindCopy-recycle-" + Guid.NewGuid().ToString("N"));
         string destination = Path.Combine(directory, Path.GetFileName(originalPath));
-        if (destination.Length >= 260) { error = "Слишком длинный путь для корзины"; return false; }
         try
         {
             var security = new DirectorySecurity();
@@ -435,30 +434,7 @@ public sealed unsafe class WindowsDeletionBackend : IDeletionBackend
 
     public bool MoveToRecycleBin(string path, out string? error)
     {
-        error = null;
-        if (path.Length >= 260)
-        {
-            error = "Слишком длинный путь для корзины, используйте безвозвратное удаление";
-            return false;
-        }
-        var op = new SHFILEOPSTRUCTW
-        {
-            wFunc = 3, // FO_DELETE
-            pFrom = path + "\0",
-            // FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI | FOF_WANTNUKEWARNING
-            fFlags = 0x0040 | 0x0010 | 0x0004 | 0x0400 | 0x4000,
-        };
-        int rc = SHFileOperationW(ref op);
-        if (rc != 0 || op.fAnyOperationsAborted)
-        {
-            error = op.fAnyOperationsAborted ? "Отменено" : $"код ошибки 0x{rc:X}";
-            return false;
-        }
-        if (File.Exists(path))
-        {
-            error = "Файл остался на месте";
-            return false;
-        }
+        if (!WindowsRecycleBin.Move(path, out error)) return false;
         try
         {
             string? parent = Path.GetDirectoryName(path);
@@ -471,22 +447,6 @@ public sealed unsafe class WindowsDeletionBackend : IDeletionBackend
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetFileInformationByHandleEx(SafeFileHandle handle, int infoClass, void* info, uint size);
-
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
-    private struct SHFILEOPSTRUCTW
-    {
-        public IntPtr hwnd;
-        public uint wFunc;
-        [MarshalAs(UnmanagedType.LPWStr)] public string pFrom;
-        [MarshalAs(UnmanagedType.LPWStr)] public string? pTo;
-        public ushort fFlags;
-        [MarshalAs(UnmanagedType.Bool)] public bool fAnyOperationsAborted;
-        public IntPtr hNameMappings;
-        [MarshalAs(UnmanagedType.LPWStr)] public string? lpszProgressTitle;
-    }
-
-    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
-    private static extern int SHFileOperationW(ref SHFILEOPSTRUCTW lpFileOp);
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, ExactSpelling = true)]
     private static extern SafeFileHandle CreateFileW(string lpFileName, uint dwDesiredAccess, uint dwShareMode,

@@ -10,7 +10,7 @@ namespace FindCopy.Core;
 /// FindFirstFileExW(FindExInfoBasic, FIND_FIRST_EX_LARGE_FETCH) enumeration (ТЗ §4).
 /// </summary>
 [SupportedOSPlatform("windows")]
-public sealed unsafe class WindowsFileSystem : FileSystemBase, IUsnSource, IEnumerationStats
+public sealed unsafe class WindowsFileSystem : FileSystemBase, IUsnInventorySource, IEnumerationStats
 {
     private int _largeFetchSupported = 1;
     private readonly ConcurrentDictionary<string, bool> _extdUnsupported = new(StringComparer.OrdinalIgnoreCase);
@@ -481,13 +481,20 @@ public sealed unsafe class WindowsFileSystem : FileSystemBase, IUsnSource, IEnum
                 return false;
             journalId = data.UsnJournalID;
             nextUsn = data.NextUsn;
-            lowestValidUsn = data.LowestValidUsn;
+            lowestValidUsn = Math.Max(data.FirstUsn, data.LowestValidUsn);
             return true;
         }
         catch { return false; }
     }
 
-    public bool TryReadChanges(string volumeRoot, ulong journalId, long fromUsn, long toUsn, HashSet<(ulong Lo, ulong Hi)> changed, CancellationToken ct)
+    public bool TryReadChanges(string volumeRoot, ulong journalId, long fromUsn, long toUsn, HashSet<(ulong Lo, ulong Hi)> changed, CancellationToken ct) =>
+        ReadJournal(volumeRoot, journalId, fromUsn, toUsn, changed, null, ct);
+
+    public bool TryReadDirectoryChanges(string volumeRoot, ulong journalId, long fromUsn, long toUsn,
+        List<UsnChange> changes, CancellationToken ct) => ReadJournal(volumeRoot, journalId, fromUsn, toUsn, null, changes, ct);
+
+    private bool ReadJournal(string volumeRoot, ulong journalId, long fromUsn, long toUsn,
+        HashSet<(ulong Lo, ulong Hi)>? changed, List<UsnChange>? changes, CancellationToken ct)
     {
         try
         {
@@ -517,25 +524,8 @@ public sealed unsafe class WindowsFileSystem : FileSystemBase, IUsnSource, IEnum
                             &req, (uint)sizeof(Native.READ_USN_JOURNAL_DATA_V0), buf, BufSize, out got, IntPtr.Zero);
                     }
                     if (!ok || got < 8) return false;
-                    long next = *(long*)buf;
-                    uint off = 8;
-                    while (off + 8 <= got)
-                    {
-                        byte* rec = buf + off;
-                        uint len = *(uint*)rec;
-                        if (len < 8 || len > got - off) return false;
-                        ushort major = *(ushort*)(rec + 4);
-                        if (major == 2 && len >= 60)
-                            changed.Add((*(ulong*)(rec + 8), 0));
-                        else if (major == 3 && len >= 76)
-                            changed.Add((*(ulong*)(rec + 8), *(ulong*)(rec + 16)));
-                        else if (major == 4 && len >= 64)
-                            changed.Add((*(ulong*)(rec + 8), *(ulong*)(rec + 16)));
-                        else return false;
-                        off += len;
-                    }
-                    if (off != got) return false;
-                    if (next <= usn) return false; // The requested journal interval was not fully covered.
+                    if (!UsnRecordParser.Parse(new ReadOnlySpan<byte>(buf, (int)got), usn, toUsn, changed, changes, out long next))
+                        return false;
                     usn = next;
                 }
                 return true;

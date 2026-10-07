@@ -57,6 +57,7 @@ internal sealed class ScanRun
     private byte[] _fullHashes = Array.Empty<byte>();
     private List<int[]> _zeroGroups = new();
     private ScanCache? _cache;
+    private DirectoryInventory? _inventory;
     private readonly Dictionary<int, byte[]> _cachedFull = new();
     private readonly Dictionary<int, CacheEntry> _cachedQuick = new();
     private readonly List<string> _volumeProbePaths = new();
@@ -79,31 +80,35 @@ internal sealed class ScanRun
     {
         var sw = Stopwatch.StartNew();
 
-        Phase("Обход папок");
-        Enumerate();
-        CopyEnumerationStats();
-
-        Phase("Группировка по размеру");
-        var (groups, zero) = GroupBySize();
-
-        Phase("Проверка жёстких ссылок");
-        groups = ResolvePhysicalIdentity(groups);
-        if (zero.Count >= 2) _zeroGroups = ResolvePhysicalIdentity(new List<int[]> { zero.ToArray() });
-
         try
         {
-            if (_opt.CachePath != null && groups.Count > 0)
+            if (_opt.CachePath != null)
+            {
+                OpenCache();
+                if (_cache != null && _opt.UseUsnJournal && !_opt.FollowDirectoryReparsePoints && _fs is IUsnInventorySource journal)
+                {
+                    try { _inventory = new DirectoryInventory(_fs, journal, _cache, _c); }
+                    catch (Exception ex) { _c.CacheNote = "Снимок каталогов недоступен: " + ex.Message; }
+                }
+            }
+            Phase("Обход папок");
+            Enumerate();
+            CopyEnumerationStats();
+            Phase("Группировка по размеру");
+            var (groups, zero) = GroupBySize();
+            Phase("Проверка жёстких ссылок");
+            groups = ResolvePhysicalIdentity(groups);
+            if (zero.Count >= 2) _zeroGroups = ResolvePhysicalIdentity(new List<int[]> { zero.ToArray() });
+            if (_cache != null)
             {
                 Phase("Чтение кеша");
-                OpenCache();
-                if (_cache != null)
-                {
-                    if (_opt.UseUsnJournal) ApplyUsnJournal();
-                    LoadFromCache(groups);
-                }
+                if (_opt.UseUsnJournal) ApplyUsnJournal();
+                LoadFromCache(groups);
             }
             var result = RunContentStages(groups, zero, sw);
             SaveUsnState();
+            if (_cache != null) _inventory?.Commit(_ct);
+            result.Counters.CacheNote = _c.CacheNote;
             return result;
         }
         finally
@@ -345,6 +350,7 @@ internal sealed class ScanRun
             }
             int domain = _domains.GetOrAdd(_fs.GetStorageProfile(root));
             _volumeProbePaths.Add(root);
+            _inventory?.BeginRoot(root, _ct);
             if (_opt.FollowDirectoryReparsePoints)
             {
                 if (!_fs.TryGetDirectoryIdentity(root, out var rid))
@@ -363,7 +369,9 @@ internal sealed class ScanRun
                 curDir = stack.Pop();
                 curPath = _paths.GetDirectory(curDir);
                 curDomain = _paths.GetDirectoryDomain(curDir);
-                var st = _fs.EnumerateDirectory(curPath, handler, _ct, out var err);
+                string? err;
+                var st = _inventory != null ? _inventory.Enumerate(curPath, handler, _ct, out err)
+                    : _fs.EnumerateDirectory(curPath, handler, _ct, out err);
                 Interlocked.Increment(ref _c.DirectoriesScanned);
                 if (st != FileStatus.Ok)
                 {

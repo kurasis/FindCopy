@@ -32,7 +32,7 @@ public sealed class ScanOptions
     /// <summary>Persistent fingerprint cache file (ТЗ §18). Null = no cache.</summary>
     public string? CachePath { get; init; }
 
-    /// <summary>Use the NTFS USN Journal to invalidate cache entries of changed files (ТЗ §19).</summary>
+    /// <summary>Use the journal for cache invalidation and safe reuse of unchanged directory listings.</summary>
     public bool UseUsnJournal { get; init; } = true;
 
     /// <summary>

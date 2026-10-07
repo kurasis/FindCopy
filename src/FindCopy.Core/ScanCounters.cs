@@ -21,6 +21,9 @@ public sealed class ScanCounters
     public long UsnVolumesTracked;     // volumes whose journal was read since the last scan
     public long UsnInvalidated;        // cache entries dropped because the journal reported a change
     public long UsnUnavailable;        // volumes without a readable journal (no rights, not NTFS, network)
+    public long InventoryDirectoriesReused;
+    public long InventoryEntriesReused;
+    public long InventoryRootsRebuilt;
     public long HashMatchGroups;
     public long ExactMatchGroups;
     public long SkippedFiles;     // excluded by policy: reparse, cloud, system, hidden

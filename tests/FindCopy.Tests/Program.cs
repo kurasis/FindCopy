@@ -672,6 +672,9 @@ if (OperatingSystem.IsWindows())
 
 else { skipped++; Console.WriteLine("  SKIP D8 native Recycle Bin requires Windows"); }
 
+IncrementalTests.Run(Test, root);
+if (OperatingSystem.IsWindows()) WindowsAcceptanceTests.Run(Test, root);
+else { skipped += 4; Console.WriteLine("  SKIP W1-W4 native long-path recycling, USN, EFS, and Cloud Files require Windows"); }
 try { Directory.Delete(root, true); } catch { }
 Console.WriteLine($"\n{passed} passed, {failed} failed, {skipped} skipped");
 return failed == 0 ? 0 : 1;

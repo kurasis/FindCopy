@@ -139,8 +139,7 @@ public interface IFileSystem
 }
 
 /// <summary>
-/// Optional NTFS USN Journal access (ТЗ §19). Used only to invalidate cache entries; the scanner
-/// never depends on it for correctness.
+/// Optional NTFS USN Journal access. The ordinary scan remains the fallback.
 /// </summary>
 public interface IUsnSource
 {
@@ -149,6 +148,16 @@ public interface IUsnSource
     bool TryQueryJournal(string volumeRoot, out ulong journalId, out long nextUsn, out long lowestValidUsn);
     /// <summary>Collects ids of files changed in [fromUsn, toUsn). False when the journal cannot be read.</summary>
     bool TryReadChanges(string volumeRoot, ulong journalId, long fromUsn, long toUsn, HashSet<(ulong Lo, ulong Hi)> changed, CancellationToken ct);
+}
+
+/// <summary>Journal identities and parents required to refresh a persisted directory inventory.</summary>
+public readonly record struct UsnChange(ulong FileLow, ulong FileHigh, ulong ParentLow, ulong ParentHigh);
+
+public interface IUsnInventorySource : IUsnSource
+{
+    /// <summary>False for incomplete intervals or records whose parents cannot be interpreted.</summary>
+    bool TryReadDirectoryChanges(string volumeRoot, ulong journalId, long fromUsn, long toUsn,
+        List<UsnChange> changes, CancellationToken ct);
 }
 
 public abstract class FileSystemBase : IFileSystem
