@@ -40,7 +40,7 @@ public sealed class Tuning
     /// <summary>Global CPU budget shared by all hashing workers (ТЗ §17).</summary>
     public int CpuBudget { get; init; } = Math.Max(1, Environment.ProcessorCount);
 
-    /// <summary>Version of the deterministic sampling scheme (stored with any future cache).</summary>
+    /// <summary>Version of the deterministic sampling scheme stored in fingerprint cache entries.</summary>
     public const int SamplingSchemeVersion = 1;
 
     public void Validate()

@@ -4,7 +4,7 @@ rem  FindCopy - build script
 rem    build.bat          build FindCopy.exe into .\publish
 rem    build.bat test     run the correctness tests, then build
 rem    build.bat bench    also build the benchmark tool
-rem  Needs .NET SDK 8 or newer: https://dotnet.microsoft.com/download/dotnet/8.0
+rem  Needs .NET SDK 8.0.425 (global.json): https://dotnet.microsoft.com/download/dotnet/8.0
 rem ============================================================
 setlocal EnableExtensions
 chcp 65001 >nul
@@ -12,7 +12,8 @@ cd /d "%~dp0"
 
 where dotnet >nul 2>nul
 if errorlevel 1 goto :nosdk
-dotnet --list-sdks 2>nul | findstr /r /c:"^[89]\." /c:"^[1-9][0-9]\." >nul
+rem Resolve the exact SDK required by global.json, rather than accepting any installed SDK.
+dotnet --version >nul 2>nul
 if errorlevel 1 goto :nosdk
 
 echo.
@@ -61,15 +62,15 @@ exit /b 0
 
 :nosdk
 echo.
-echo .NET SDK 8 or newer was not found.
-echo Download and install ".NET 8.0 SDK" (x64):
+echo The .NET SDK required by global.json (8.0.425) was not found.
+echo Download and install ".NET 8.0.425 SDK" for your processor architecture:
 echo   https://dotnet.microsoft.com/download/dotnet/8.0
 echo After installation, open a new terminal and run build.bat again.
-pause
+if /i not "%~2"=="nopause" pause
 exit /b 1
 
 :fail
 echo.
 echo Build failed.
-pause
+if /i not "%~2"=="nopause" pause
 exit /b 1

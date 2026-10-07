@@ -2,6 +2,10 @@
 
 ## Current status
 
+The later [maintenance audit](code-audit-2026-10-07.md) records compatible
+resource/error-path fixes and their targeted regressions. The measurements
+below retain the original validation source/run attribution.
+
 The reproduced import defects and remaining software capability gaps are fixed.
 USN directory inventory now avoids unchanged enumeration. Verified long paths
 can be recycled through a short same-volume staging namespace, with write

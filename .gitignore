@@ -10,3 +10,4 @@ publish/
 *.db-shm
 bench-results.csv
 *.generated
+**/__pycache__/

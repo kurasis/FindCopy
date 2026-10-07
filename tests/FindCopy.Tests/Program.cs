@@ -723,6 +723,7 @@ else { skipped += 3; Console.WriteLine("  SKIP C1-C3 require physical file ident
 
 IncrementalTests.Run(Test, root);
 RecoveryTests.Run(Test, root);
+ResourceLifetimeTests.Run(Test, root);
 if (OperatingSystem.IsWindows())
 {
     WindowsAcceptanceTests.Run(Test, root);

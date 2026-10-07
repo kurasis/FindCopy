@@ -39,6 +39,12 @@ jobs:
       - name: Build all projects
         if: runner.os != 'Windows'
         run: dotnet build FindCopy.sln -c Release -m:2
+      - name: Local build script SDK mismatch and non-interactive error paths
+        if: runner.os == 'Windows'
+        run: ./tools/test-build-script.ps1
+      - name: Release source and existing-tag regressions
+        if: runner.os != 'Windows'
+        run: python3 tests/test_release_source.py
       - name: Build self-contained Windows binaries
         if: runner.os == 'Windows'
         run: |

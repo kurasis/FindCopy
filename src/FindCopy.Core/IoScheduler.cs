@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 
 namespace FindCopy.Core;
 
@@ -117,25 +118,37 @@ public sealed class IoScheduler
             t.Start();
         }
 
-        foreach (var dr in domains.Values)
+        try
         {
-            var kind = _domains[dr.Id].Kind;
-            dr.Max = Math.Max(1, concurrencyFor(kind));
-            int start = Math.Clamp(autotuneStartFor?.Invoke(kind) ?? dr.Max, 1, dr.Max);
-            dr.Tuning = itemBytes != null && start < dr.Max;
-            dr.Target = Math.Min(start, Math.Max(1, dr.Queue.Count));
-            dr.WindowStartTicks = DateTime.UtcNow.Ticks;
-            for (int i = 0; i < dr.Target; i++) Spawn(dr);
-        }
+            foreach (var dr in domains.Values)
+            {
+                var kind = _domains[dr.Id].Kind;
+                dr.Max = Math.Max(1, concurrencyFor(kind));
+                int start = Math.Clamp(autotuneStartFor?.Invoke(kind) ?? dr.Max, 1, dr.Max);
+                dr.Tuning = itemBytes != null && start < dr.Max;
+                dr.Target = Math.Min(start, Math.Max(1, dr.Queue.Count));
+                dr.WindowStartTicks = Stopwatch.GetTimestamp();
+                for (int i = 0; i < dr.Target; i++) Spawn(dr);
+            }
 
-        while (true)
+            while (true)
+            {
+                Thread[] snapshot;
+                lock (threads) snapshot = threads.ToArray();
+                if (snapshot.All(t => !t.IsAlive)) break;
+                snapshot.FirstOrDefault(t => t.IsAlive)?.Join(250);
+                foreach (var dr in domains.Values.Where(d => d.Tuning))
+                    Autotune(dr, Spawn);
+            }
+        }
+        finally
         {
+            // Configuration and notification callbacks may throw after workers have started.
+            // Do not let the caller dispose shared state while those workers still use it.
             Thread[] snapshot;
             lock (threads) snapshot = threads.ToArray();
-            if (snapshot.All(t => !t.IsAlive)) break;
-            snapshot.FirstOrDefault(t => t.IsAlive)?.Join(250);
-            foreach (var dr in domains.Values.Where(d => d.Tuning))
-                Autotune(dr, Spawn);
+            foreach (var thread in snapshot)
+                if ((thread.ThreadState & System.Threading.ThreadState.Unstarted) == 0) thread.Join();
         }
         ct.ThrowIfCancellationRequested();
         if (!errors.IsEmpty) throw new AggregateException(errors);
@@ -143,8 +156,8 @@ public sealed class IoScheduler
 
     private void Autotune(DomainRun dr, Action<DomainRun> spawn)
     {
-        long now = DateTime.UtcNow.Ticks;
-        double seconds = (now - dr.WindowStartTicks) / (double)TimeSpan.TicksPerSecond;
+        long now = Stopwatch.GetTimestamp();
+        double seconds = Stopwatch.GetElapsedTime(dr.WindowStartTicks, now).TotalSeconds;
         long bytes = Interlocked.Read(ref dr.BytesDone) - dr.WindowBytes;
         if (seconds < 1.5 || bytes < (32L << 20)) return;
         double rate = bytes / seconds;
