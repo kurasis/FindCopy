@@ -5,13 +5,17 @@ separate .NET 8 engine. It compares content independently of names, extensions,
 and timestamps, and rechecks selected copies before deletion. Repository
 documentation and maintenance instructions are in English.
 
-The reproduced import defects and remaining software gaps have been corrected.
+The defects and specification gaps documented in the implementation audit have
+been corrected.
 Persistent USN inventory, long-path recycling, native EFS/cloud acceptance,
 WPF interaction checks, and A–H benchmark workloads are implemented. Actual
 HDD/SATA/NVMe/network tuning and provider account integration need target
 equipment. See the [implementation audit](docs/implementation-audit.md) and
 [acceptance follow-up](docs/roadmap.md). The [import audit](docs/import-audit.md)
 is historical evidence.
+
+The [maintenance audit](docs/code-audit-2026-10-07.md) records resource/error-path
+fixes, regression coverage, and remaining verification limits.
 
 ## Build and test
 
@@ -20,7 +24,8 @@ Download the self-contained x64 or ARM64 executable from
 .NET installation is required. Releases include SHA-256 checksums.
 The manual **Publish FindCopy release** workflow publishes artifacts from a
 successful **Validate FindCopy** main run, checks the application version and
-executable architectures, and refuses to overwrite a published release.
+executable architectures, checks existing tags against the validated commit,
+and refuses to overwrite a published release.
 
 Use .NET SDK 8.0.425, pinned by `global.json`. The desktop application runs
 on Windows; Linux can cross-build it and run portable engine checks.
@@ -30,6 +35,7 @@ dotnet restore FindCopy.sln
 dotnet build FindCopy.sln -c Release
 dotnet run -c Release --no-build --project tests/FindCopy.Tests
 dotnet run -c Release --no-build --project tests/FindCopy.Audit
+python3 tests/test_release_source.py
 dotnet publish src/FindCopy.App -c Release -o publish
 ```
 
@@ -40,7 +46,7 @@ dotnet run -c Release --no-build --project tests/FindCopy.UiTests -- ui-test-art
 ```
 
 These are console runners; `dotnet test` does not execute their assertions.
-Linux reports **64 passed, 0 failed, 26 platform skips**, plus **17 acceptance
+Linux reports **67 passed, 0 failed, 26 platform skips**, plus **17 acceptance
 regressions passed**. Windows executes the native checks and WPF runner; CI
 publishes screenshots and `FindCopy.exe`. See the audit for the verified run.
 The solution includes all six projects.
