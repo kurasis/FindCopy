@@ -16,7 +16,13 @@ try {
     $created = $true; $env:FINDCOPY_SMB_ROOT = "\\localhost\$name"
     & $tests --network-only | Tee-Object -FilePath (Join-Path $output 'network-tests.txt')
     if ($LASTEXITCODE -ne 0) { throw "SMB acceptance failed: $LASTEXITCODE." }
-    1..4 | ForEach-Object { [IO.File]::WriteAllText((Join-Path $data "fixture-$_.txt"), 'SMB harness fixture') }
+    $block = New-Object byte[] 1048576
+    ([Random]::new(71)).NextBytes($block)
+    foreach ($index in 1..4) {
+        $stream = [IO.File]::Open((Join-Path $data "fixture-$index.bin"), [IO.FileMode]::CreateNew, [IO.FileAccess]::Write)
+        try { foreach ($chunk in 1..8) { $stream.Write($block, 0, $block.Length) }; $stream.Flush($true) }
+        finally { $stream.Dispose() }
+    }
     & $bench $output --scenario H --path $env:FINDCOPY_SMB_ROOT --cache `
         --label 'Windows 11 loopback SMB; functional acceptance, not physical network calibration' `
         --os-cache-state warm | Tee-Object -FilePath (Join-Path $output 'network-bench.txt')
