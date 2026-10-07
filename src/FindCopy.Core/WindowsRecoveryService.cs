@@ -138,7 +138,7 @@ public sealed unsafe class WindowsRecoveryService
             }
             finally { metadata?.Dispose(); }
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or
             System.Text.Json.JsonException or OverflowException or Win32Exception)
         {
             return new(id, entry?.OriginalPath ?? "", moved, moved ? "Файл восстановлен, но история или запись корзины не обновлены: " + ex.Message : ex.Message);
@@ -162,7 +162,7 @@ public sealed unsafe class WindowsRecoveryService
                     using var file = OpenLockedFile(source);
                     if (new WindowsFileSystem().TryGetSnapshot(file, source, out var actual) && SameVersion(entry.Version, actual)) hash = validated;
                 }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or OverflowException or Win32Exception)
+                catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or OverflowException or Win32Exception)
                 { /* Other entries, incomplete bin operations, and uncertain objects are never adopted. */ }
                 if (hash == null) continue;
                 if (found != null) throw new IOException("В корзине несколько подходящих записей; автоматическое восстановление отменено");

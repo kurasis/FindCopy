@@ -24,7 +24,7 @@ public sealed class RecoveryJournal
         if (Directory.Exists(DirectoryPath))
             foreach (string file in Directory.EnumerateFiles(DirectoryPath, "*.json"))
                 try { entries.Add(Read(file)); }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or ArgumentException)
+                catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or JsonException or ArgumentException)
                 { problems.Add(Path.GetFileName(file) + ": " + ex.Message); }
         errors = problems;
         return entries.OrderByDescending(e => e.DeletedUtc).ToList();
