@@ -1,0 +1,46 @@
+name: Extended native acceptance
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/FindCopy.Bench/ExtendedAcceptance.cs'
+      - '.github/workflows/extended-acceptance.yml'
+permissions:
+  contents: read
+jobs:
+  native-scale:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.425
+      - name: Build acceptance runner
+        run: dotnet build tools/FindCopy.Bench -c Release
+      - name: Select a volume for actual NTFS files
+        shell: pwsh
+        run: |
+          $drive = Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Free -gt 16GB } | Sort-Object Free -Descending | Select-Object -First 1
+          if (-not $drive) { throw 'No runner volume has 16 GiB free for native metadata acceptance.' }
+          $work = Join-Path $drive.Root 'FindCopy-native-scale'
+          "FINDCOPY_SCALE_WORK=$work" >> $env:GITHUB_ENV
+          Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, TotalVisibleMemorySize | Format-List
+          Get-Volume | Select-Object DriveLetter, FileSystem, SizeRemaining, Size | Format-Table
+      - name: Native acceptance runner smoke on twenty thousand real files
+        run: dotnet run -c Release --no-build --project tools/FindCopy.Bench -- "$env:FINDCOPY_SCALE_WORK" --extended-acceptance native 20000
+      - name: Five million real NTFS files, USN changes, and cancellation
+        run: dotnet run -c Release --no-build --project tools/FindCopy.Bench -- "$env:FINDCOPY_SCALE_WORK" --extended-acceptance native 5000000
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: FindCopy-native-five-million
+          path: ${{ env.FINDCOPY_SCALE_WORK }}/extended-acceptance.csv
+      - name: Ten million real NTFS files, USN changes, and cancellation
+        run: dotnet run -c Release --no-build --project tools/FindCopy.Bench -- "$env:FINDCOPY_SCALE_WORK" --extended-acceptance native 10000000
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: FindCopy-native-ten-million
+          path: ${{ env.FINDCOPY_SCALE_WORK }}/extended-acceptance.csv

@@ -32,6 +32,8 @@ public static class BenchmarkRunner
           --path <folder>          existing dataset; physical E-H drives supplied by the operator
           --os-cache-state <label>  observed cache condition (default unspecified; never auto-evicted)
           --label <text>           hardware/dataset description supplied by the operator
+          <work-dir> --extended-acceptance dense [size-MiB]   full hash/exact/cancel/cache on fully written files
+          <work-dir> --extended-acceptance native [count]     actual NTFS files, inventory/deltas/cancellation
         Results append to <work-dir>/bench-results-v3.csv. Reported bytes are logical content I/O.
         """;
 

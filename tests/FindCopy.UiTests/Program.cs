@@ -5,6 +5,7 @@ using System.IO;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Security.Principal;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -17,10 +18,20 @@ internal static class Program
     private static string _artifacts = "";
     private static string _notification = "";
     private static bool _warning;
+    private static string? _published;
 
     [STAThread]
     private static int Main(string[] args)
     {
+        if (args.Contains("--require-standard-user"))
+        {
+            var identity = WindowsIdentity.GetCurrent();
+            if (new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator))
+                throw new InvalidOperationException("Acceptance requires a non-administrator token");
+            Console.WriteLine("STANDARD_USER: " + identity.Name + ", administrator=false");
+        }
+        int publishedIndex = Array.IndexOf(args, "--published-exe");
+        if (publishedIndex >= 0) _published = Path.GetFullPath(args[publishedIndex + 1]);
         _artifacts = Path.GetFullPath(args.Length == 0 ? "ui-test-artifacts" : args[0]);
         Directory.CreateDirectory(_artifacts);
         var app = new App { CreateStartupWindow = false }; app.InitializeComponent();
@@ -165,6 +176,11 @@ internal static class Program
                 }
                 Screenshot(window, "minimum-width.png");
             });
+            if (_published != null)
+                await Test("UI12 published executable scans and actually recycles a selected copy", async () =>
+                {
+                    await Task.Run(() => PublishedAppAcceptance.Run(_published, Path.Combine(root, "published-pair")));
+                });
         }
         finally { window.Close(); Directory.Delete(root, true); }
     }

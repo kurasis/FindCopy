@@ -44,6 +44,15 @@ jobs:
       - name: Publish Windows desktop application
         if: runner.os == 'Windows'
         run: dotnet publish src/FindCopy.App -c Release --no-restore -o publish
+      - name: Published desktop and WPF under a standard account
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./tools/test-standard-user.ps1 -PublishedExe publish/FindCopy.exe -UiRunner tests/FindCopy.UiTests/bin/Release/net8.0-windows10.0.17763.0/win-x64/FindCopy.UiTests.exe -OutputDirectory standard-ui-artifacts
+      - uses: actions/upload-artifact@v4
+        if: always() && runner.os == 'Windows'
+        with:
+          name: FindCopy-standard-user-validation
+          path: standard-ui-artifacts
       - uses: actions/upload-artifact@v4
         if: runner.os == 'Windows'
         with:
