@@ -1,0 +1,395 @@
+using System.Buffers;
+using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
+using Microsoft.Win32.SafeHandles;
+
+namespace FindCopy.Core;
+
+public enum DeleteMode
+{
+    /// <summary>Move to the Recycle Bin (default). Refused where the volume has no Recycle Bin.</summary>
+    RecycleBin,
+    /// <summary>Delete permanently.</summary>
+    Permanent,
+}
+
+/// <summary>Copies the user chose to delete from one duplicate group. At least one copy must stay.</summary>
+public sealed record DeleteRequest(DuplicateGroup Group, IReadOnlyList<DuplicateFile> ToDelete);
+
+public sealed record DeleteOutcome(string Path, bool Deleted, string? Reason, long FreedBytes);
+
+/// <summary>Platform primitives for deletion. Every method is used only after the safety checks.</summary>
+public interface IDeletionBackend
+{
+    /// <summary>Opens the copy that is kept: read access, others may read but not write or delete it.</summary>
+    SafeFileHandle OpenKeeper(string path);
+    /// <summary>
+    /// Opens a copy to be deleted: read + delete access, no other writers. Fails with a sharing
+    /// violation when it is the very same file object as an open keeper (another path to it).
+    /// </summary>
+    SafeFileHandle OpenCandidate(string path);
+    /// <summary>Permanently deletes the file behind an open candidate handle.</summary>
+    bool DeletePermanently(SafeFileHandle candidate, string path, out string? error);
+    /// <summary>True when files on this path's volume can go to the Recycle Bin.</summary>
+    bool RecycleBinAvailable(string path);
+    bool MoveToRecycleBin(string path, out string? error);
+}
+
+/// <summary>
+/// Deletes duplicates the user selected, re-checking everything first (ТЗ §11, §25): a fresh
+/// byte-for-byte comparison with a copy that stays (never the cache, never just a hash), unchanged
+/// size/date since the scan, and proof that the kept copy is a different file object (hard links,
+/// the same network share under two names). Any doubt means the file is not deleted.
+/// </summary>
+public sealed class DuplicateDeleter
+{
+    private readonly IFileSystem _fs;
+    private readonly IDeletionBackend _backend;
+    private const int BufferSize = 1 << 20;
+
+    public DuplicateDeleter(IFileSystem? fs = null, IDeletionBackend? backend = null)
+    {
+        _fs = fs ?? FileSystemBase.CreateDefault();
+        _backend = backend ?? CreateDefaultBackend();
+    }
+
+    public static IDeletionBackend CreateDefaultBackend() =>
+        OperatingSystem.IsWindows() ? new WindowsDeletionBackend() : new PortableDeletionBackend();
+
+    public IDeletionBackend Backend => _backend;
+
+    /// <summary>Paths (incl. hard-link aliases) whose volume has no Recycle Bin.</summary>
+    public IReadOnlyList<string> PathsWithoutRecycleBin(IEnumerable<DeleteRequest> requests) =>
+        requests.SelectMany(r => r.ToDelete).Select(f => f.Path).Where(p => !_backend.RecycleBinAvailable(p)).ToList();
+
+    public List<DeleteOutcome> Run(IReadOnlyList<DeleteRequest> requests, DeleteMode mode,
+        IProgress<(int Done, int Total, string Path)>? progress = null, CancellationToken ct = default) =>
+        Run(requests, _ => mode, progress, ct);
+
+    /// <param name="modeFor">Deletion mode per file path (e.g. permanent only where there is no Recycle Bin).</param>
+    public List<DeleteOutcome> Run(IReadOnlyList<DeleteRequest> requests, Func<string, DeleteMode> modeFor,
+        IProgress<(int Done, int Total, string Path)>? progress = null, CancellationToken ct = default)
+    {
+        var outcomes = new List<DeleteOutcome>();
+        int total = requests.Sum(r => r.ToDelete.Count), done = 0;
+        byte[] a = ArrayPool<byte>.Shared.Rent(BufferSize), b = ArrayPool<byte>.Shared.Rent(BufferSize);
+        try
+        {
+            foreach (var req in requests)
+            {
+                var g = req.Group;
+                var selected = new HashSet<DuplicateFile>(req.ToDelete);
+                void SkipAll(string reason)
+                {
+                    foreach (var f in req.ToDelete) { outcomes.Add(new DeleteOutcome(f.Path, false, reason, 0)); progress?.Report((++done, total, f.Path)); }
+                }
+
+                if (selected.Count == 0) continue;
+                if (!selected.All(g.Files.Contains)) { SkipAll("Файл не из этой группы"); continue; }
+                var keepers = g.Files.Where(f => !selected.Contains(f)).ToList();
+                if (keepers.Count == 0) { SkipAll("В группе должна остаться хотя бы одна копия"); continue; }
+
+                // The kept copy stays open (no write/delete sharing) for the whole group.
+                SafeFileHandle? keeperHandle = null;
+                DuplicateFile? keeper = null;
+                FileIdentity keeperId = default;
+                foreach (var k in keepers)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    try
+                    {
+                        var h = _backend.OpenKeeper(k.Path);
+                        if (RandomAccess.GetLength(h) != g.LogicalSize) { h.Dispose(); continue; }
+                        keeperHandle = h;
+                        keeper = k;
+                        _fs.GetIdentity(k.Path, out keeperId);
+                        break;
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException) { }
+                }
+                if (keeperHandle == null || keeper == null)
+                {
+                    SkipAll("Не осталось доступной неизменённой копии, с которой можно сверить файл");
+                    continue;
+                }
+
+                using (keeperHandle)
+                {
+                    foreach (var f in req.ToDelete)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        var outcome = DeleteOne(g, f, keeper, keeperHandle, keeperId, modeFor(f.Path), a, b, ct);
+                        outcomes.Add(outcome);
+                        progress?.Report((++done, total, f.Path));
+                    }
+                }
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(a);
+            ArrayPool<byte>.Shared.Return(b);
+        }
+        return outcomes;
+    }
+
+    private DeleteOutcome DeleteOne(DuplicateGroup g, DuplicateFile f, DuplicateFile keeper, SafeFileHandle keeperHandle,
+        FileIdentity keeperId, DeleteMode mode, byte[] a, byte[] b, CancellationToken ct)
+    {
+        DeleteOutcome No(string reason) => new(f.Path, false, reason, 0);
+
+        if (string.Equals(f.Path, keeper.Path, StringComparison.OrdinalIgnoreCase))
+            return No("Это та же копия, что остаётся");
+        if (mode == DeleteMode.RecycleBin && !_backend.RecycleBinAvailable(f.Path))
+            return No("На этом диске нет корзины (флешка или сетевая папка). Выберите безвозвратное удаление");
+
+        // Replaced by a link since the scan? Never delete through a link.
+        try
+        {
+            if (new FileInfo(f.Path).LinkTarget != null || new FileInfo(keeper.Path).LinkTarget != null)
+                return No("Файл стал ссылкой после поиска");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException) { return No("Файл недоступен: " + ex.Message); }
+
+        // Same physical object under another path (hard link, network share under two names)?
+        var idStatus = _fs.GetIdentity(f.Path, out var candId);
+        if (idStatus != FileStatus.Ok) return No("Файл недоступен: " + FileStatusText.ToCode(idStatus));
+        if (candId.Valid && keeperId.Valid && candId.VolumeSerial == keeperId.VolumeSerial &&
+            candId.FileIdLow == keeperId.FileIdLow && candId.FileIdHigh == keeperId.FileIdHigh)
+            return No("Это тот же файл, что и оставляемая копия (жёсткая ссылка или другой путь к нему)");
+
+        SafeFileHandle cand;
+        try { cand = _backend.OpenCandidate(f.Path); }
+        catch (IOException ex) when ((ex.HResult & 0xFFFF) is 32 or 33)
+        {
+            return No("Файл занят другой программой или это тот же файл, что и оставляемая копия");
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException) { return No("Не удалось открыть: " + ex.Message); }
+
+        bool closed = false;
+        try
+        {
+            // Unchanged since the scan: the user decided about exactly this file.
+            bool snap = _fs.TryGetSnapshot(cand, f.Path, out var before);
+            long len = snap ? before.Size : RandomAccess.GetLength(cand);
+            if (len != g.LogicalSize) return No("Файл изменился после поиска (другой размер)");
+            if (snap && before.LastWriteTicks != 0 && f.LastWriteUtc.Ticks > 0 &&
+                before.LastWriteTicks != f.LastWriteUtc.ToFileTimeUtc() && before.LastWriteTicks != f.LastWriteUtc.Ticks)
+                return No("Файл изменился после поиска (другая дата изменения)");
+
+            // Fresh byte-for-byte comparison with the kept copy.
+            long off = 0;
+            while (off < g.LogicalSize)
+            {
+                ct.ThrowIfCancellationRequested();
+                int want = (int)Math.Min(BufferSize, g.LogicalSize - off);
+                int na = ReadFull(keeperHandle, a.AsSpan(0, want), off);
+                int nb = ReadFull(cand, b.AsSpan(0, want), off);
+                if (na != want || nb != want) return No("Файл изменился во время проверки");
+                if (!a.AsSpan(0, want).SequenceEqual(b.AsSpan(0, want)))
+                    return No("Содержимое не совпадает с оставляемой копией. Файл не удалён");
+                off += want;
+            }
+            if (snap && (!_fs.TryGetSnapshot(cand, f.Path, out var after) || !after.Equals(before)))
+                return No("Файл изменился во время проверки");
+
+            // Delete the verified file, then its hard-link aliases (otherwise no space is freed).
+            string? err;
+            if (mode == DeleteMode.Permanent)
+            {
+                if (!_backend.DeletePermanently(cand, f.Path, out err)) return No("Не удалось удалить: " + err);
+                cand.Dispose();
+                closed = true;
+            }
+            else
+            {
+                cand.Dispose();
+                closed = true;
+                if (!_backend.MoveToRecycleBin(f.Path, out err)) return No("Не удалось переместить в корзину: " + err);
+            }
+
+            var aliasProblems = new List<string>();
+            foreach (var alias in f.HardLinkAliases)
+            {
+                ct.ThrowIfCancellationRequested();
+                if (_fs.GetIdentity(alias, out var aid) != FileStatus.Ok || !aid.Valid || !candId.Valid ||
+                    aid.VolumeSerial != candId.VolumeSerial || aid.FileIdLow != candId.FileIdLow || aid.FileIdHigh != candId.FileIdHigh)
+                {
+                    aliasProblems.Add(alias + " (уже не жёсткая ссылка на этот файл, оставлен)");
+                    continue;
+                }
+                bool ok;
+                if (mode == DeleteMode.Permanent)
+                {
+                    try
+                    {
+                        using var ah = _backend.OpenCandidate(alias);
+                        ok = _backend.DeletePermanently(ah, alias, out err);
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException) { ok = false; err = ex.Message; }
+                }
+                else ok = _backend.MoveToRecycleBin(alias, out err);
+                if (!ok) aliasProblems.Add(alias + ": " + err);
+            }
+
+            bool lastLinkGone = aliasProblems.Count == 0;
+            long freed = lastLinkGone ? (f.AllocatedSize >= 0 ? f.AllocatedSize : f.LogicalSize) : 0;
+            string? note = aliasProblems.Count == 0 ? null
+                : "Удалён, но остались жёсткие ссылки, поэтому место не освободилось: " + string.Join("; ", aliasProblems);
+            return new DeleteOutcome(f.Path, true, note, freed);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex) { return No("Ошибка: " + ex.Message); }
+        finally
+        {
+            if (!closed) cand.Dispose();
+        }
+    }
+
+    private static int ReadFull(SafeFileHandle h, Span<byte> buf, long off)
+    {
+        int got = 0;
+        while (got < buf.Length)
+        {
+            int n = RandomAccess.Read(h, buf[got..], off + got);
+            if (n == 0) break;
+            got += n;
+        }
+        return got;
+    }
+}
+
+/// <summary>Non-Windows backend used by the test-suite: no Recycle Bin, no mandatory share modes.</summary>
+public sealed class PortableDeletionBackend : IDeletionBackend
+{
+    public SafeFileHandle OpenKeeper(string path) =>
+        File.OpenHandle(path, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.SequentialScan);
+
+    public SafeFileHandle OpenCandidate(string path) =>
+        File.OpenHandle(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete, FileOptions.SequentialScan);
+
+    public bool DeletePermanently(SafeFileHandle candidate, string path, out string? error)
+    {
+        try { File.Delete(path); error = null; return true; }
+        catch (Exception ex) { error = ex.Message; return false; }
+    }
+
+    public bool RecycleBinAvailable(string path) => false;
+
+    public bool MoveToRecycleBin(string path, out string? error)
+    {
+        error = "Корзина недоступна";
+        return false;
+    }
+}
+
+[SupportedOSPlatform("windows")]
+public sealed unsafe class WindowsDeletionBackend : IDeletionBackend
+{
+    private const uint GENERIC_READ = 0x80000000, DELETE = 0x00010000;
+    private const uint FILE_SHARE_READ = 1, FILE_SHARE_DELETE = 4;
+    private const uint OPEN_EXISTING = 3, FILE_FLAG_SEQUENTIAL_SCAN = 0x08000000;
+
+    public SafeFileHandle OpenKeeper(string path) => Open(path, GENERIC_READ, FILE_SHARE_READ);
+
+    public SafeFileHandle OpenCandidate(string path) => Open(path, GENERIC_READ | DELETE, FILE_SHARE_READ | FILE_SHARE_DELETE);
+
+    private static SafeFileHandle Open(string path, uint access, uint share)
+    {
+        // No FILE_FLAG_OPEN_REPARSE_POINT: dedup / cloud files must be read through their filter.
+        // Links are rejected by the caller before opening.
+        var h = CreateFileW(WindowsFileSystem.ToExtendedPath(path), access, share, IntPtr.Zero, OPEN_EXISTING,
+            FILE_FLAG_SEQUENTIAL_SCAN, IntPtr.Zero);
+        if (!h.IsInvalid) return h;
+        int err = Marshal.GetLastWin32Error();
+        h.Dispose();
+        string msg = new System.ComponentModel.Win32Exception(err).Message;
+        throw err switch
+        {
+            5 => new UnauthorizedAccessException(msg),
+            2 or 3 => new FileNotFoundException(msg, path),
+            _ => new IOException(msg, unchecked((int)0x80070000) | err),
+        };
+    }
+
+    public bool DeletePermanently(SafeFileHandle candidate, string path, out string? error)
+    {
+        error = null;
+        // FileDispositionInfoEx: DELETE | POSIX_SEMANTICS | IGNORE_READONLY_ATTRIBUTE (Windows 10 1809+).
+        uint flags = 0x1 | 0x2 | 0x10;
+        if (SetFileInformationByHandle(candidate, 21 /* FileDispositionInfoEx */, &flags, 4)) return true;
+        int err = Marshal.GetLastWin32Error();
+        if (err is 87 or 1 or 50 or 124)
+        {
+            byte del = 1;
+            if (SetFileInformationByHandle(candidate, 4 /* FileDispositionInfo */, &del, 1)) return true;
+            err = Marshal.GetLastWin32Error();
+        }
+        error = new System.ComponentModel.Win32Exception(err).Message;
+        return false;
+    }
+
+    public bool RecycleBinAvailable(string path)
+    {
+        string? root = Path.GetPathRoot(path);
+        if (string.IsNullOrEmpty(root) || root.StartsWith(@"\\", StringComparison.Ordinal)) return false;  // network share
+        uint type = GetDriveTypeW(root.EndsWith('\\') ? root : root + "\\");
+        return type == 3; // DRIVE_FIXED; removable (USB), remote, CD and RAM disks have no Recycle Bin
+    }
+
+    public bool MoveToRecycleBin(string path, out string? error)
+    {
+        error = null;
+        if (path.Length >= 260)
+        {
+            error = "Слишком длинный путь для корзины, используйте безвозвратное удаление";
+            return false;
+        }
+        var op = new SHFILEOPSTRUCTW
+        {
+            wFunc = 3, // FO_DELETE
+            pFrom = path + "\0",
+            // FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI | FOF_WANTNUKEWARNING
+            fFlags = 0x0040 | 0x0010 | 0x0004 | 0x0400 | 0x4000,
+        };
+        int rc = SHFileOperationW(ref op);
+        if (rc != 0 || op.fAnyOperationsAborted)
+        {
+            error = op.fAnyOperationsAborted ? "Отменено" : $"код ошибки 0x{rc:X}";
+            return false;
+        }
+        if (File.Exists(path))
+        {
+            error = "Файл остался на месте";
+            return false;
+        }
+        return true;
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    private struct SHFILEOPSTRUCTW
+    {
+        public IntPtr hwnd;
+        public uint wFunc;
+        [MarshalAs(UnmanagedType.LPWStr)] public string pFrom;
+        [MarshalAs(UnmanagedType.LPWStr)] public string? pTo;
+        public ushort fFlags;
+        [MarshalAs(UnmanagedType.Bool)] public bool fAnyOperationsAborted;
+        public IntPtr hNameMappings;
+        [MarshalAs(UnmanagedType.LPWStr)] public string? lpszProgressTitle;
+    }
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern int SHFileOperationW(ref SHFILEOPSTRUCTW lpFileOp);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, ExactSpelling = true)]
+    private static extern SafeFileHandle CreateFileW(string lpFileName, uint dwDesiredAccess, uint dwShareMode,
+        IntPtr lpSecurityAttributes, uint dwCreationDisposition, uint dwFlagsAndAttributes, IntPtr hTemplateFile);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetFileInformationByHandle(SafeFileHandle hFile, int infoClass, void* info, uint size);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    private static extern uint GetDriveTypeW(string lpRootPathName);
+}

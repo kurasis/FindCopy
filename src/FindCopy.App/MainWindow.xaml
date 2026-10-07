@@ -1,0 +1,239 @@
+<Window x:Class="FindCopy.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:FindCopy.App"
+        Title="FindCopy — поиск дубликатов файлов"
+        Width="1100" Height="760" MinWidth="760" MinHeight="560"
+        WindowStartupLocation="CenterScreen"
+        Background="{StaticResource WindowBg}"
+        FontFamily="Segoe UI" FontSize="13"
+        TextOptions.TextFormattingMode="Display"
+        UseLayoutRounding="True"
+        AllowDrop="True" Drop="OnDrop" DragOver="OnDragOver"
+        Closing="OnClosing">
+  <Window.Resources>
+    <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
+    <HierarchicalDataTemplate DataType="{x:Type local:GroupVM}" ItemsSource="{Binding Files}">
+      <Grid Margin="0,6,0,4">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <Border Background="#EEF2FF" CornerRadius="4" Padding="7,2" Margin="0,0,10,0" VerticalAlignment="Center">
+          <TextBlock Text="{Binding Number}" Foreground="{StaticResource Accent}" FontWeight="SemiBold"/>
+        </Border>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+          <TextBlock Text="{Binding Title}" FontWeight="SemiBold" Foreground="{StaticResource TextMain}"/>
+          <TextBlock Text="  ·  " Foreground="{StaticResource TextMuted}"/>
+          <TextBlock Text="{Binding Reclaim}" Foreground="{StaticResource TextMuted}"/>
+          <Border CornerRadius="4" Padding="7,1" Margin="12,0,0,0" Background="{Binding BadgeBackground}">
+            <TextBlock Text="{Binding Badge}" FontSize="11.5" Foreground="{Binding BadgeForeground}"/>
+          </Border>
+          <TextBlock Text="{Binding SelectionText}" Foreground="#DC2626" FontWeight="SemiBold" Margin="12,0,0,0"/>
+        </StackPanel>
+      </Grid>
+    </HierarchicalDataTemplate>
+
+    <DataTemplate DataType="{x:Type local:FileVM}">
+      <Border Padding="2,3" Background="Transparent">
+        <Border.ContextMenu>
+          <ContextMenu>
+            <MenuItem Header="Показать в проводнике" Click="OnShowInExplorer"/>
+            <MenuItem Header="Открыть файл" Click="OnOpenFile"/>
+            <Separator/>
+            <MenuItem Header="Копировать путь" Click="OnCopyPath"/>
+          </ContextMenu>
+        </Border.ContextMenu>
+        <Grid>
+         <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="*"/>
+         </Grid.ColumnDefinitions>
+         <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Top"
+                   Margin="0,2,8,0" ToolTip="Отметить для удаления"/>
+         <StackPanel Grid.Column="1">
+          <TextBlock>
+            <Run Text="{Binding FileName, Mode=OneWay}" Foreground="{StaticResource TextMain}"/>
+            <Run Text="   "/>
+            <Run Text="{Binding Directory, Mode=OneWay}" Foreground="{StaticResource TextMuted}"/>
+          </TextBlock>
+          <TextBlock Text="{Binding Info}" FontSize="11.5" Foreground="{StaticResource TextMuted}"/>
+          <TextBlock Text="{Binding AliasText}" FontSize="11.5" Foreground="{StaticResource Warn}" TextWrapping="Wrap"
+                     Visibility="{Binding HasAliases, Converter={StaticResource BoolToVis}}"/>
+         </StackPanel>
+        </Grid>
+      </Border>
+    </DataTemplate>
+  </Window.Resources>
+
+  <Grid Margin="20,16,20,16">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <!-- Header -->
+    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="2,0,0,14">
+      <Image Source="app.ico" Width="32" Height="32" Margin="0,0,12,0" VerticalAlignment="Center"/>
+      <StackPanel VerticalAlignment="Center">
+        <TextBlock Text="Поиск дубликатов файлов" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource TextMain}"/>
+        <TextBlock Text="Сравнение по содержимому, а не по имени. Удаляется только то, что вы сами отметите." Foreground="{StaticResource TextMuted}"/>
+      </StackPanel>
+    </StackPanel>
+
+    <!-- Settings card -->
+    <Border Grid.Row="1" Style="{StaticResource Card}">
+      <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <TextBlock Text="Папка для поиска" FontWeight="SemiBold" Margin="0,0,0,6"/>
+        <Grid Grid.Row="1">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+          </Grid.ColumnDefinitions>
+          <TextBox x:Name="FolderBox" ToolTip="Можно указать несколько папок через «;» или перетащить папки в окно" KeyDown="OnFolderKeyDown"/>
+          <Button Grid.Column="1" Content="Обзор…" Margin="8,0,0,0" Click="OnBrowse" MinWidth="96"/>
+        </Grid>
+        <TextBlock Grid.Row="2" Text="Несколько папок разделяйте «;». Папки можно перетащить в окно." FontSize="11.5"
+                   Foreground="{StaticResource TextMuted}" Margin="0,4,0,6"/>
+
+        <CheckBox Grid.Row="3" x:Name="RecursiveBox" IsChecked="True" Content="Рекурсивный поиск (включая все подпапки)"/>
+
+        <Grid Grid.Row="4" Margin="0,6,0,0">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+          </Grid.ColumnDefinitions>
+          <Expander Header="Дополнительные параметры" Foreground="{StaticResource TextMain}" VerticalAlignment="Top">
+            <StackPanel Margin="22,4,0,0">
+              <CheckBox x:Name="SkipSystemBox" IsChecked="True" Content="Пропускать системные файлы и папки"/>
+              <CheckBox x:Name="SkipHiddenBox" Content="Пропускать скрытые файлы и папки"/>
+              <CheckBox x:Name="ExactBox" Content="Побайтовая проверка найденных совпадений (медленнее, но доказывает равенство)"/>
+              <CheckBox x:Name="CloudBox" Content="Проверять файлы, которые хранятся только в облаке (OneDrive и т.п.)" Checked="OnCloudChecked"/>
+              <CheckBox x:Name="AdsBox" Content="Сравнивать также альтернативные потоки NTFS (имена, размеры и содержимое)"/>
+              <CheckBox x:Name="FollowLinksBox" Content="Переходить по ссылкам на папки (junction, symlink, точки монтирования)"/>
+              <CheckBox x:Name="ShowZeroBox" Content="Показывать пустые файлы (0 байт)" Checked="OnShowZeroChanged" Unchecked="OnShowZeroChanged"/>
+              <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                <CheckBox x:Name="CacheBox" IsChecked="True" VerticalAlignment="Center"
+                          Content="Запоминать хеши между запусками (повторный поиск быстрее)"/>
+                <Button Content="Очистить кеш" Click="OnClearCache" Margin="12,0,0,0" MinHeight="26" Padding="10,2"/>
+              </StackPanel>
+              <Button Content="Настройки производительности…" Click="OnSettings" HorizontalAlignment="Left" Margin="0,8,0,2" MinHeight="26" Padding="10,2"/>
+            </StackPanel>
+          </Expander>
+          <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+            <Button x:Name="CancelButton" Content="Отмена" Click="OnCancel" IsEnabled="False" MinWidth="96" Margin="0,0,8,0"/>
+            <Button x:Name="SearchButton" Content="Поиск" Style="{StaticResource AccentButton}" Click="OnSearch" MinWidth="140" IsDefault="True"/>
+          </StackPanel>
+        </Grid>
+      </Grid>
+    </Border>
+
+    <!-- Progress -->
+    <StackPanel Grid.Row="2" Margin="2,12,2,10">
+      <Grid>
+        <TextBlock x:Name="PhaseText" Text="Готов к поиску" Foreground="{StaticResource TextMain}" FontWeight="SemiBold"/>
+        <TextBlock x:Name="ElapsedText" HorizontalAlignment="Right" Foreground="{StaticResource TextMuted}"/>
+      </Grid>
+      <ProgressBar x:Name="Progress" Margin="0,6,0,4" Minimum="0" Maximum="1"/>
+      <TextBlock x:Name="CountersText" Foreground="{StaticResource TextMuted}" FontSize="12" TextTrimming="CharacterEllipsis"/>
+    </StackPanel>
+
+    <!-- Results -->
+    <Border Grid.Row="3" Style="{StaticResource Card}" Padding="0">
+      <TabControl x:Name="Tabs" BorderThickness="0" Background="Transparent" Padding="0">
+        <TabItem x:Name="DupTab" Header="Дубликаты">
+          <Grid>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <Border x:Name="SelectionBar" Background="#F8FAFC" BorderBrush="{StaticResource CardBorder}" BorderThickness="0,0,0,1"
+                    Padding="12,8" Visibility="Collapsed">
+              <Grid>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto"/>
+                  <ColumnDefinition Width="*"/>
+                  <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                  <TextBlock Text="Оставлять в группе:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                  <ComboBox x:Name="KeepRuleBox" SelectedIndex="0" MinWidth="190" VerticalAlignment="Center">
+                    <ComboBoxItem Content="самый старый файл"/>
+                    <ComboBoxItem Content="самый новый файл"/>
+                    <ComboBoxItem Content="файл с самым коротким путём"/>
+                    <ComboBoxItem Content="первый по алфавиту"/>
+                  </ComboBox>
+                  <Button Content="Отметить лишние копии" Click="OnSelectExtras" Margin="8,0,0,0" MinHeight="28" Padding="10,2"/>
+                  <Button Content="Снять отметки" Click="OnClearSelection" Margin="6,0,0,0" MinHeight="28" Padding="10,2"/>
+                </StackPanel>
+                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                  <TextBlock x:Name="SelectionText" VerticalAlignment="Center" Foreground="{StaticResource TextMuted}" Margin="0,0,10,0"/>
+                  <CheckBox x:Name="PermanentBox" Content="безвозвратно" VerticalAlignment="Center" Margin="0,0,10,0"
+                            ToolTip="Удалить мимо корзины. По умолчанию файлы перемещаются в корзину"/>
+                  <Button x:Name="DeleteButton" Content="Удалить отмеченные…" Style="{StaticResource DangerButton}"
+                          Click="OnDeleteSelected" IsEnabled="False" MinHeight="30" Padding="12,2"/>
+                </StackPanel>
+              </Grid>
+            </Border>
+            <TreeView Grid.Row="1" x:Name="ResultTree" BorderThickness="0" Padding="8,4"
+                      VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
+                      VirtualizingPanel.ScrollUnit="Pixel"
+                      MouseDoubleClick="OnTreeDoubleClick">
+              <TreeView.ItemContainerStyle>
+                <Style TargetType="TreeViewItem">
+                  <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+                </Style>
+              </TreeView.ItemContainerStyle>
+            </TreeView>
+            <TextBlock Grid.Row="1" x:Name="EmptyHint" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"
+                       Foreground="{StaticResource TextMuted}" FontSize="14" TextWrapping="Wrap" Margin="24"
+                       Text="Выберите папку и нажмите «Поиск»"/>
+          </Grid>
+        </TabItem>
+        <TabItem x:Name="ZeroTab" Header="Пустые файлы" Visibility="Collapsed">
+          <ListBox x:Name="ZeroList" BorderThickness="0" Padding="8,4" VirtualizingPanel.IsVirtualizing="True"/>
+        </TabItem>
+        <TabItem x:Name="IssuesTab" Header="Пропущено и ошибки">
+          <DataGrid x:Name="IssuesGrid" AutoGenerateColumns="False" IsReadOnly="True" BorderThickness="0"
+                    HeadersVisibility="Column" GridLinesVisibility="None" RowHeaderWidth="0"
+                    EnableRowVirtualization="True" CanUserAddRows="False" Background="White"
+                    AlternatingRowBackground="#F8FAFC">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Причина" Binding="{Binding StatusText}" Width="210"/>
+              <DataGridTextColumn Header="Путь" Binding="{Binding Path}" Width="*"/>
+              <DataGridTextColumn Header="Подробности" Binding="{Binding Message}" Width="260"/>
+            </DataGrid.Columns>
+          </DataGrid>
+        </TabItem>
+        <TabItem Header="Статистика">
+          <TextBox x:Name="StatsBox" IsReadOnly="True" BorderThickness="0" FontFamily="Consolas" FontSize="12.5"
+                   VerticalScrollBarVisibility="Auto" Padding="14,10" VerticalContentAlignment="Top"/>
+        </TabItem>
+      </TabControl>
+    </Border>
+
+    <!-- Footer -->
+    <Grid Grid.Row="4" Margin="2,10,2,0">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="Auto"/>
+      </Grid.ColumnDefinitions>
+      <TextBlock x:Name="SummaryText" VerticalAlignment="Center" TextWrapping="Wrap" Foreground="{StaticResource TextMain}" Margin="0,0,12,0"/>
+      <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+        <Button x:Name="ExpandButton" Content="Развернуть все" Click="OnExpandAll" IsEnabled="False" Margin="0,0,8,0"/>
+        <Button x:Name="ExportButton" Content="Сохранить отчёт (CSV)…" Click="OnExport" IsEnabled="False"/>
+      </StackPanel>
+    </Grid>
+  </Grid>
+</Window>

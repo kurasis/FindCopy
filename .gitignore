@@ -1,0 +1,12 @@
+**/bin/
+**/obj/
+.vs/
+.idea/
+publish/
+*.user
+*.suo
+*.db
+*.db-wal
+*.db-shm
+bench-results.csv
+*.generated
