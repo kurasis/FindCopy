@@ -29,8 +29,13 @@ jobs:
         if: runner.os == 'Windows'
         run: ./tools/record-windows11-environment.ps1
       - uses: actions/setup-dotnet@v4
+        if: runner.os != 'Windows'
         with:
           dotnet-version: 8.0.425
+      - name: Install checksum-verified .NET 8 ARM64 SDK
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: ./tools/setup-windows-dotnet.ps1
       - name: Build all projects
         if: runner.os != 'Windows'
         run: dotnet build FindCopy.sln -c Release -m:2
@@ -56,7 +61,7 @@ jobs:
         run: ./tests/FindCopy.Audit/bin/Release/net8.0/${{ matrix.runtime }}/FindCopy.Audit.exe
       - name: WPF interaction and recovery reporting
         if: runner.os == 'Windows'
-        run: ./tests/FindCopy.UiTests/bin/Release/net8.0-windows10.0.17763.0/${{ matrix.runtime }}/FindCopy.UiTests.exe ui-test-artifacts
+        run: ./tools/test-ui-themes.ps1 -UiRunner tests/FindCopy.UiTests/bin/Release/net8.0-windows10.0.17763.0/${{ matrix.runtime }}/FindCopy.UiTests.exe -OutputDirectory ui-test-artifacts
       - name: Actual SMB UNC correctness and H sweep
         if: runner.os == 'Windows'
         run: ./tools/test-smb.ps1 -TestsExe tests/FindCopy.Tests/bin/Release/net8.0/${{ matrix.runtime }}/FindCopy.Tests.exe -BenchExe tools/FindCopy.Bench/bin/Release/net8.0/${{ matrix.runtime }}/FindCopy.Bench.exe -OutputDirectory smb-artifacts

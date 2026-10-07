@@ -15,7 +15,7 @@ if (-not (Test-Path -LiteralPath $datasetPath -PathType Container)) {
 }
 $projectPath = Join-Path $PSScriptRoot 'FindCopy.Bench/FindCopy.Bench.csproj'
 $benchArgs = @('run', '-c', 'Release', '--project', $projectPath)
-if ($RuntimeIdentifier) { $benchArgs += @("-p:RuntimeIdentifier=$RuntimeIdentifier", '-p:SelfContained=true') }
+if ($RuntimeIdentifier) { $benchArgs += @('--runtime', $RuntimeIdentifier, '--self-contained') }
 $benchArgs += @('--',
     $Work, '--scenario', $Scenario, '--path', $datasetPath,
     '--label', $Label, '--os-cache-state', $OsCacheState)

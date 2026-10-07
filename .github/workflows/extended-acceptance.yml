@@ -9,8 +9,17 @@ on:
       - 'src/FindCopy.Core/ScanCache*.cs'
       - 'tests/FindCopy.Tests/IncrementalTests.cs'
       - '.github/workflows/extended-acceptance.yml'
+      - 'tools/FindCopy.Bench/Program.cs'
+      - 'tools/setup-windows-dotnet.ps1'
+      - 'tools/record-windows11-environment.ps1'
+      - 'global.json'
 permissions:
   contents: read
+concurrency:
+  group: extended-native-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  FINDCOPY_EXPECTED_ARCH: Arm64
 jobs:
   native-scale:
     runs-on: windows-11-arm
@@ -19,11 +28,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Require Windows 11 ARM64 client and record host
         run: ./tools/record-windows11-environment.ps1
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 8.0.425
+      - name: Install checksum-verified .NET 8 ARM64 SDK
+        shell: powershell
+        run: ./tools/setup-windows-dotnet.ps1
       - name: Build acceptance runner
-        run: dotnet build tools/FindCopy.Bench -c Release
+        run: dotnet build tools/FindCopy.Bench -c Release -p:RuntimeIdentifier=win-arm64 -p:SelfContained=true
       - name: Select a volume for actual NTFS files
         shell: pwsh
         run: |
@@ -37,16 +46,16 @@ jobs:
           & fsutil usn createjournal m=536870912 a=67108864 "$($drive.Name):"
           if ($LASTEXITCODE -ne 0) { throw 'Could not enable the native acceptance journal.' }
       - name: Native acceptance runner smoke on twenty thousand real files
-        run: dotnet run -c Release --no-build --project tools/FindCopy.Bench -- "$env:FINDCOPY_SCALE_WORK" --extended-acceptance native 20000
+        run: ./tools/FindCopy.Bench/bin/Release/net8.0/win-arm64/FindCopy.Bench.exe "$env:FINDCOPY_SCALE_WORK" --extended-acceptance native 20000
       - name: Five million real NTFS files, USN changes, and cancellation
-        run: dotnet run -c Release --no-build --project tools/FindCopy.Bench -- "$env:FINDCOPY_SCALE_WORK" --extended-acceptance native 5000000
+        run: ./tools/FindCopy.Bench/bin/Release/net8.0/win-arm64/FindCopy.Bench.exe "$env:FINDCOPY_SCALE_WORK" --extended-acceptance native 5000000
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: FindCopy-native-five-million
           path: ${{ env.FINDCOPY_SCALE_WORK }}/extended-acceptance.csv
       - name: Ten million real NTFS files, USN changes, and cancellation
-        run: dotnet run -c Release --no-build --project tools/FindCopy.Bench -- "$env:FINDCOPY_SCALE_WORK" --extended-acceptance native 10000000
+        run: ./tools/FindCopy.Bench/bin/Release/net8.0/win-arm64/FindCopy.Bench.exe "$env:FINDCOPY_SCALE_WORK" --extended-acceptance native 10000000
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -59,11 +68,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Require Windows 11 ARM64 client and record host
         run: ./tools/record-windows11-environment.ps1
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 8.0.425
+      - name: Install checksum-verified .NET 8 ARM64 SDK
+        shell: powershell
+        run: ./tools/setup-windows-dotnet.ps1
       - name: Build acceptance runner
-        run: dotnet build tools/FindCopy.Bench -c Release
+        run: dotnet build tools/FindCopy.Bench -c Release -p:RuntimeIdentifier=win-arm64 -p:SelfContained=true
       - name: Select a volume for fully written files
         shell: pwsh
         run: |
@@ -73,9 +82,34 @@ jobs:
           Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, TotalVisibleMemorySize | Format-List
           Get-Volume | Select-Object DriveLetter, FileSystem, SizeRemaining, Size | Format-Table
       - name: Fully written fifty-GiB files, exact comparison, cancellation, and cache
-        run: dotnet run -c Release --no-build --project tools/FindCopy.Bench -- "$env:FINDCOPY_DENSE_WORK" --extended-acceptance dense 51200
+        run: ./tools/FindCopy.Bench/bin/Release/net8.0/win-arm64/FindCopy.Bench.exe "$env:FINDCOPY_DENSE_WORK" --extended-acceptance dense 51200
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: FindCopy-windows-dense-acceptance
           path: ${{ env.FINDCOPY_DENSE_WORK }}/extended-acceptance.csv
+  mixed-workload:
+    runs-on: windows-11-arm
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require Windows 11 ARM64 client and record host
+        run: ./tools/record-windows11-environment.ps1
+      - name: Install checksum-verified .NET 8 ARM64 SDK
+        shell: powershell
+        run: ./tools/setup-windows-dotnet.ps1
+      - name: Build native ARM64 acceptance runner
+        run: dotnet build tools/FindCopy.Bench -c Release -p:RuntimeIdentifier=win-arm64 -p:SelfContained=true
+      - name: Enable journal on the owned fixture volume
+        run: |
+          & fsutil usn createjournal m=536870912 a=67108864 "$((Get-Item $env:RUNNER_TEMP).PSDrive.Name):"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not enable the fixture journal.' }
+      - name: Long paths, equal sizes, five thousand groups, aliases, cache and cancellation
+        run: ./tools/FindCopy.Bench/bin/Release/net8.0/win-arm64/FindCopy.Bench.exe "$env:RUNNER_TEMP/FindCopy-mixed-workload" --extended-acceptance workload 100000
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: FindCopy-windows11-mixed-workload
+          path: |
+            ${{ runner.temp }}/FindCopy-mixed-workload/extended-acceptance.csv
+            windows-environment.json

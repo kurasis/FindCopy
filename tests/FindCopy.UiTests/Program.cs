@@ -63,6 +63,8 @@ internal static class Program
         Directory.CreateDirectory(root);
         var window = new MainWindow { NotificationSink = (message, _, warning) => { _notification = message; _warning = warning; } };
         Application.Current.MainWindow = window; window.Show();
+        var actualDpi = VisualTreeHelper.GetDpi(window);
+        Console.WriteLine($"DESKTOP_DPI: x={actualDpi.PixelsPerInchX}; y={actualDpi.PixelsPerInchY}");
         try
         {
             string pair = Path.Combine(root, "pair"); Directory.CreateDirectory(pair);
@@ -253,6 +255,45 @@ internal static class Program
                 }
                 finally { recovery.Close(); }
             });
+            await Test("UI15 minimum-width actions remain visible in 100/125/150/200 percent render exports", async () =>
+            {
+                window.Width = window.MinWidth;
+                await Dispatcher.Yield(DispatcherPriority.ApplicationIdle); window.UpdateLayout();
+                foreach (string name in new[] { "RecoveryButton", "ExportButton", "ExpandButton" })
+                {
+                    var button = Control<Button>(window, name);
+                    var bounds = button.TransformToAncestor(window).TransformBounds(new Rect(0, 0, button.ActualWidth, button.ActualHeight));
+                    Require(bounds.Left >= 0 && bounds.Right <= window.ActualWidth && bounds.Bottom <= window.ActualHeight,
+                        name + " is clipped before scaled rendering");
+                }
+                foreach (int percent in new[] { 100, 125, 150, 200 })
+                    Screenshot(window, $"render-{percent}.png", 96 * percent / 100.0);
+                Console.WriteLine("RENDER_SCALE: exported 100/125/150/200 percent; does not change the desktop's actual DPI");
+            });
+            await Test("UI16 two thousand result groups support bulk selection and clearing", async () =>
+            {
+                const int groups = 2000;
+                string directory = Path.Combine(root, "many-results"); Directory.CreateDirectory(directory);
+                byte[] bytes = new byte[4096];
+                for (int i = 0; i < groups; i++)
+                {
+                    System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(bytes, i);
+                    string d = Path.Combine(directory, "group-" + i); Directory.CreateDirectory(d);
+                    foreach (string name in new[] { "a", "b", "c" }) File.WriteAllBytes(Path.Combine(d, name), bytes);
+                }
+                await Search(window, directory);
+                Require(Groups(window).Count == groups && Control<TreeView>(window, "ResultTree").Items.Count == groups,
+                    "large result list lost groups");
+                var watch = Stopwatch.StartNew(); Click(window, "SelectExtrasButton");
+                Require(Groups(window).All(g => g.SelectedCount == 2) && Control<Button>(window, "DeleteButton").IsEnabled,
+                    "bulk selection lost keepers or omitted groups");
+                await Dispatcher.Yield(DispatcherPriority.ApplicationIdle);
+                Click(window, "ClearSelectionButton");
+                Require(Groups(window).All(g => g.SelectedCount == 0) && !Control<Button>(window, "DeleteButton").IsEnabled,
+                    "bulk clear left hidden selections");
+                Console.WriteLine($"RESULT_UI: groups={groups}; selection/clear={watch.Elapsed.TotalSeconds:F3}s");
+                Screenshot(window, "many-results.png");
+            });
             if (_published != null)
                 await Test("UI12 published executable scans, recycles, and restores a selected copy", async () =>
                 {
@@ -290,10 +331,11 @@ internal static class Program
     private static List<GroupVM> Groups(MainWindow window) => Field<List<GroupVM>>(window, "_groups");
     private static void Invoke(MainWindow window, string method, object argument) => typeof(MainWindow).GetMethod(method,
         BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(window, new[] { argument });
-    private static void Screenshot(Window window, string name)
+    private static void Screenshot(Window window, string name, double dpi = 96)
     {
         window.UpdateLayout();
-        var bitmap = new RenderTargetBitmap((int)window.ActualWidth, (int)window.ActualHeight, 96, 96, PixelFormats.Pbgra32);
+        var bitmap = new RenderTargetBitmap((int)Math.Ceiling(window.ActualWidth * dpi / 96),
+            (int)Math.Ceiling(window.ActualHeight * dpi / 96), dpi, dpi, PixelFormats.Pbgra32);
         bitmap.Render(window); var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
         using var output = File.Create(Path.Combine(_artifacts, name)); encoder.Save(output);
     }

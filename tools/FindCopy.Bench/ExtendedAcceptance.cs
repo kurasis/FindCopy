@@ -14,8 +14,8 @@ public static class ExtendedAcceptance
     {
         try
         {
-            if (args.Length is < 3 or > 4 || args[2] is not ("dense" or "native"))
-                throw new ArgumentException("Usage: <work-dir> --extended-acceptance dense|native [size-MiB|file-count]");
+            if (args.Length is < 3 or > 4 || args[2] is not ("dense" or "native" or "workload"))
+                throw new ArgumentException("Usage: <work-dir> --extended-acceptance dense|native|workload [size-MiB|unique-file-count]");
             string work = Path.GetFullPath(args[0]);
             string owner = Path.Combine(work, "extended-acceptance-owned.txt");
             if (Directory.Exists(work) && Directory.EnumerateFileSystemEntries(work).Any() &&
@@ -25,11 +25,17 @@ public static class ExtendedAcceptance
             _csv = Path.Combine(work, "extended-acceptance.csv");
             if (!File.Exists(_csv)) File.WriteAllText(_csv,
                 "utc;mode;phase;expected_files;files;logical_bytes;elapsed_s;peak_scan_ram_mib;content_bytes;quick_bytes;full_bytes;exact_bytes;native_directories;inventory_directories;groups;errors;changed;complete;cancelled;os;cpu_count;memory_budget_mib\n");
-            int amount = args.Length == 4 ? int.Parse(args[3], CultureInfo.InvariantCulture) : args[2] == "dense" ? 10240 : 5_000_000;
+            int amount = args.Length == 4 ? int.Parse(args[3], CultureInfo.InvariantCulture) : args[2] == "dense" ? 10240 : args[2] == "workload" ? 100_000 : 5_000_000;
             if (args[2] == "dense")
             {
                 if (amount < 16 || amount > 102400) throw new ArgumentOutOfRangeException(nameof(amount));
                 Dense(work, amount * 1048576L);
+            }
+            else if (args[2] == "workload")
+            {
+                if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("Mixed workload acceptance requires Windows/NTFS");
+                if (amount < 20_000 || amount > 1_000_000) throw new ArgumentOutOfRangeException(nameof(amount));
+                Workload(work, amount);
             }
             else
             {
@@ -171,6 +177,69 @@ public static class ExtendedAcceptance
 
     private static void Unique(ScanResult r, int count) => Require(r.Counters.UniqueSizeFilesRejected == count &&
         r.Counters.ContentBytesRead == 0 && r.Groups.Count == 0, "all real unique-size files must avoid content I/O");
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static void Workload(string work, int uniqueCount)
+    {
+        const int sameSize = 20_000, groups = 5_000, aliases = 250;
+        string root = Path.Combine(work, "mixed-workload");
+        Require(!Directory.Exists(root), "mixed workload generation requires a fresh owned workspace");
+        Directory.CreateDirectory(root);
+        string deep = root;
+        for (int i = 0; i < 5; i++) deep = Path.Combine(deep, "данные-" + new string((char)('a' + i), 45));
+        Directory.CreateDirectory(deep);
+        Parallel.For(0, (uniqueCount + 999) / 1000, new ParallelOptions { MaxDegreeOfParallelism = Math.Min(4, Environment.ProcessorCount) }, bucket =>
+        {
+            string d = Path.Combine(deep, "batch-" + bucket); Directory.CreateDirectory(d);
+            for (int i = bucket * 1000; i < Math.Min(uniqueCount, (bucket + 1) * 1000); i++)
+                DatasetGenerator.CreateSparseFile(Path.Combine(d, $"уникальный-{i:D8}.bin"), 1_000_000L + i);
+        });
+        string rejects = Path.Combine(root, "same-size-rejects"); Directory.CreateDirectory(rejects);
+        byte[] bytes = new byte[2048];
+        for (int i = 0; i < sameSize; i++)
+        {
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(bytes, i);
+            File.WriteAllBytes(Path.Combine(rejects, "file-" + i), bytes);
+        }
+        string copies = Path.Combine(root, "copies"); Directory.CreateDirectory(copies);
+        bytes = new byte[4096];
+        string Group(int i) => Path.Combine(copies, "group-" + i);
+        for (int i = 0; i < groups; i++)
+        {
+            string d = Group(i); Directory.CreateDirectory(d);
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(bytes, i);
+            foreach (string name in new[] { "a", "b", "c" }) File.WriteAllBytes(Path.Combine(d, name), bytes);
+            if (i % 20 == 0 && !CreateHardLinkW(WindowsFileSystem.ToExtendedPath(Path.Combine(d, "alias")),
+                WindowsFileSystem.ToExtendedPath(Path.Combine(d, "a")), IntPtr.Zero))
+                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        }
+        int files = uniqueCount + sameSize + groups * 3 + aliases;
+        string cache = Path.Combine(work, "mixed-cache.db");
+        void Membership(ScanResult r, bool changed = false)
+        {
+            Require(r.Groups.Count == groups && r.Groups.Sum(g => g.UniquePhysicalFileCount) == groups * 3 - (changed ? 1 : 0) &&
+                r.Groups.SelectMany(g => g.Files).Sum(f => f.HardLinkAliasCount) == aliases,
+                "mixed workload physical groups or alias accounting");
+        }
+        var full = Measure("workload", "full-inventory-fill", root, cache, files); Membership(full);
+        Require(full.Counters.UniqueSizeFilesRejected == uniqueCount, "mixed unique-size membership");
+        var warm = Measure("workload", "warm-inventory", root, cache, files); Membership(warm);
+        Require(warm.Counters.ContentBytesRead == 0 && warm.Counters.FastEnumeratedDirectories + warm.Counters.FallbackEnumeratedDirectories == 0,
+            "mixed warm inventory must avoid content reads and enumeration");
+        File.Move(Path.Combine(Group(1), "a"), Path.Combine(Group(1), "renamed"));
+        File.Delete(Path.Combine(Group(1), "c")); DatasetGenerator.CreateSparseFile(Path.Combine(root, "new-unique"), 5_000_000);
+        var delta = Measure("workload", "rename-add-delete", root, cache, files); Membership(delta, true);
+        var fresh = Measure("workload", "fresh-oracle", root, null, files); Membership(fresh, true);
+        Require(Signature(delta) == Signature(fresh) && delta.Counters.LogicalBytesDiscovered == fresh.Counters.LogicalBytesDiscovered,
+            "mixed incremental membership differs from fresh scan");
+        Measure("workload", "cancel-inventory-replay", root, cache, files, cancel: true);
+        var recovered = Measure("workload", "after-cancel-warm", root, cache, files); Membership(recovered, true);
+        Require(Signature(recovered) == Signature(delta) && recovered.Counters.ContentBytesRead == 0,
+            "mixed cache was damaged by cancellation");
+    }
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, ExactSpelling = true)]
+    private static extern bool CreateHardLinkW(string link, string target, IntPtr security);
     private static string Signature(ScanResult r) => string.Join("|", r.Groups.Select(g =>
         g.LogicalSize + ":" + g.Hash + ":" + string.Join(",", g.Files.Select(f => f.Path).Order(StringComparer.Ordinal))).Order(StringComparer.Ordinal));
     private static void Require(bool ok, string why) { if (!ok) throw new InvalidOperationException(why); }
