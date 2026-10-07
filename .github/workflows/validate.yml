@@ -27,6 +27,15 @@ jobs:
       - name: WPF interaction and recovery reporting
         if: runner.os == 'Windows'
         run: dotnet run -c Release --no-build --project tests/FindCopy.UiTests -- ui-test-artifacts
+      - name: Hardware acceptance wrapper smoke
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $dataset = Join-Path $env:RUNNER_TEMP 'FindCopy wrapper data'
+          $work = Join-Path $env:RUNNER_TEMP 'FindCopy wrapper results'
+          New-Item -ItemType Directory -Path $dataset | Out-Null
+          1..4 | ForEach-Object { [IO.File]::WriteAllText((Join-Path $dataset "file-$_.txt"), 'wrapper smoke') }
+          ./tools/run-hardware-acceptance.ps1 -Scenario E -Dataset $dataset -Work $work -Label 'Wrapper validation; not HDD acceptance' -OsCacheState unspecified
       - uses: actions/upload-artifact@v4
         if: always() && runner.os == 'Windows'
         with:

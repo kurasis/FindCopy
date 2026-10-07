@@ -152,6 +152,19 @@ internal static class Program
                     dialogText.Contains("скачаны") && dialogText.Contains("место на диске"), "cloud warning/decline flow");
                 return Task.CompletedTask;
             });
+            await Test("UI11 deletion controls remain visible at minimum window width", async () =>
+            {
+                window.Width = window.MinWidth;
+                await Search(window, pair); Click(window, "SelectExtrasButton"); window.UpdateLayout();
+                foreach (string name in new[] { "KeepRuleBox", "SelectExtrasButton", "ClearSelectionButton", "PermanentBox", "DeleteButton" })
+                {
+                    var control = Control<FrameworkElement>(window, name);
+                    var bounds = control.TransformToAncestor(window).TransformBounds(new Rect(0, 0, control.ActualWidth, control.ActualHeight));
+                    Require(bounds.Left >= 0 && bounds.Right <= window.ActualWidth && bounds.Bottom <= window.ActualHeight,
+                        name + " is clipped at minimum width");
+                }
+                Screenshot(window, "minimum-width.png");
+            });
         }
         finally { window.Close(); Directory.Delete(root, true); }
     }

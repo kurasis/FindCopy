@@ -160,13 +160,8 @@
             </Grid.RowDefinitions>
             <Border x:Name="SelectionBar" Background="#F8FAFC" BorderBrush="{StaticResource CardBorder}" BorderThickness="0,0,0,1"
                     Padding="12,8" Visibility="Collapsed">
-              <Grid>
-                <Grid.ColumnDefinitions>
-                  <ColumnDefinition Width="Auto"/>
-                  <ColumnDefinition Width="*"/>
-                  <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+              <WrapPanel>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,6">
                   <TextBlock Text="Оставлять в группе:" VerticalAlignment="Center" Margin="0,0,6,0"/>
                   <ComboBox x:Name="KeepRuleBox" SelectedIndex="0" MinWidth="190" VerticalAlignment="Center">
                     <ComboBoxItem Content="самый старый файл"/>
@@ -174,17 +169,15 @@
                     <ComboBoxItem Content="файл с самым коротким путём"/>
                     <ComboBoxItem Content="первый по алфавиту"/>
                   </ComboBox>
-                  <Button x:Name="SelectExtrasButton" Content="Отметить лишние копии" Click="OnSelectExtras" Margin="8,0,0,0" MinHeight="28" Padding="10,2"/>
-                  <Button x:Name="ClearSelectionButton" Content="Снять отметки" Click="OnClearSelection" Margin="6,0,0,0" MinHeight="28" Padding="10,2"/>
                 </StackPanel>
-                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                  <TextBlock x:Name="SelectionText" VerticalAlignment="Center" Foreground="{StaticResource TextMuted}" Margin="0,0,10,0"/>
-                  <CheckBox x:Name="PermanentBox" Content="безвозвратно" VerticalAlignment="Center" Margin="0,0,10,0"
+                <Button x:Name="SelectExtrasButton" Content="Отметить лишние копии" Click="OnSelectExtras" Margin="0,0,8,6" MinHeight="28" Padding="10,2"/>
+                <Button x:Name="ClearSelectionButton" Content="Снять отметки" Click="OnClearSelection" Margin="0,0,8,6" MinHeight="28" Padding="10,2"/>
+                  <TextBlock x:Name="SelectionText" VerticalAlignment="Center" Foreground="{StaticResource TextMuted}" Margin="0,0,10,6"/>
+                  <CheckBox x:Name="PermanentBox" Content="безвозвратно" VerticalAlignment="Center" Margin="0,0,10,6"
                             ToolTip="Удалить мимо корзины. По умолчанию файлы перемещаются в корзину"/>
                   <Button x:Name="DeleteButton" Content="Удалить отмеченные…" Style="{StaticResource DangerButton}"
-                          Click="OnDeleteSelected" IsEnabled="False" MinHeight="30" Padding="12,2"/>
-                </StackPanel>
-              </Grid>
+                          Click="OnDeleteSelected" IsEnabled="False" MinHeight="30" Padding="12,2" Margin="0,0,0,6"/>
+              </WrapPanel>
             </Border>
             <TreeView Grid.Row="1" x:Name="ResultTree" BorderThickness="0" Padding="8,4"
                       VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
