@@ -80,6 +80,8 @@ and does not provide Windows mandatory share-mode guarantees.
 | Two fully written 50 GiB Windows files | Full hashing + exact comparison; 200 GiB logical reads plus samples; cancellation/resume/cache/change passed; peak 54.09 MiB |
 | Real 5-million-file NTFS tree | Six inventory/change/oracle/cancellation phases passed; peak 1,838.79 MiB; warm native enumeration and content I/O both zero |
 | Real 10-million-file NTFS tree | Six phases passed; peak 3,784.91 MiB; warm native enumeration and content I/O both zero |
+| Schema-5 real NTFS follow-up | All 18 phases passed; 5/10-million warm observations 1.61/4.23 s; peaks 1,797.93/3,438.91 MiB |
+| Schema-5 fully written 50 GiB pair | All five phases passed; full/exact/cancel/resume/cache/mutation; sampled peak 114.96 MiB on separate VM |
 
 Windows runtime/UI evidence and run links are recorded in
 [Windows validation](validation/windows-acceptance.md). The baseline includes

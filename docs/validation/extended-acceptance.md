@@ -53,6 +53,16 @@ The largest observed dense scan working set was 54.09 MiB. Generation precedes
 measurement; OS caches are not evicted. The CSV reports logical engine reads,
 not physical storage traffic or cold-device throughput.
 
+The dense job in [run 37615247969](https://github.com/kurasis/FindCopy/actions/runs/37615247969)
+also passed all five phases on schema-5 source `88762bc`.
+[Schema-5 dense CSV](windows-dense-schema5.csv) records full hash/exact comparison
+at 867.65 s, cancellation at 0.26 s, full-hash resumption at 433.25 s, zero-content
+warm reuse at 0.25 s, and midpoint rejection at 0.031 s. Full/exact reads remain
+200 GiB plus samples; resumption reads 100 GiB; midpoint rejection reads 192 KiB.
+Largest sampled working set was 114.96 MiB in this run, versus 54.09 MiB in the
+earlier separate VM. Both observations are retained; the earlier minimum is
+not a claimed invariant, and dense-file timing was not improved by this change.
+
 ## Real NTFS scale and reproduction
 
 The native job in [run 37608454950](https://github.com/kurasis/FindCopy/actions/runs/37608454950)

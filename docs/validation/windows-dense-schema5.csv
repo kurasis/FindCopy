@@ -1,0 +1,6 @@
+utc;mode;phase;expected_files;files;logical_bytes;elapsed_s;peak_scan_ram_mib;content_bytes;quick_bytes;full_bytes;exact_bytes;native_directories;inventory_directories;groups;errors;changed;complete;cancelled;os;cpu_count;memory_budget_mib
+2026-10-07T11:59:13.9596539Z;dense;full-exact;2;2;107374182400;867.6508228;102.2109375;214749020160;655360;107374182400;107374182400;1;0;1;0;0;True;False;Microsoft Windows 10.0.26100;4;16378
+2026-10-07T11:59:14.4891195Z;dense;cancel-full;2;2;107374182400;0.257303;112.82421875;1703936;655360;1048576;0;1;0;0;0;0;False;True;Microsoft Windows 10.0.26100;4;16378
+2026-10-07T12:06:27.7618647Z;dense;after-cancel;2;2;107374182400;433.2488614;114.9609375;107374182400;0;107374182400;0;1;0;1;0;0;True;False;Microsoft Windows 10.0.26100;4;16378
+2026-10-07T12:06:28.9584212Z;dense;warm;2;2;107374182400;0.2526108;88.28515625;0;0;0;0;1;0;1;0;0;True;False;Microsoft Windows 10.0.26100;4;16378
+2026-10-07T12:06:28.9976321Z;dense;middle-difference;2;2;107374182400;0.0307441;88.50390625;196608;196608;0;0;1;0;0;0;0;True;False;Microsoft Windows 10.0.26100;4;16378
