@@ -5,7 +5,7 @@ namespace FindCopy.Core;
 public enum RecoveryState { Staged, Recycled, Restored }
 
 public sealed record RecoveryEntry(Guid Id, string OriginalPath, string StagedPath,
-    string? RecyclePath, string? MetadataHash, MetaSnapshot Version, DateTime DeletedUtc, RecoveryState State);
+    string? RecyclePath, string? MetadataHash, MetaSnapshot Version, DateTime DeletedUtc, RecoveryState State, int FormatVersion = 1);
 
 public sealed record RecoveryOutcome(Guid Id, string Path, bool Restored, string? Reason);
 
@@ -38,7 +38,7 @@ public sealed class RecoveryJournal
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
         if (stream.Length > 131072) throw new InvalidDataException("Recovery entry is too large");
         var e = JsonSerializer.Deserialize<RecoveryEntry>(stream, Json) ?? throw new InvalidDataException("Empty recovery entry");
-        if (e.Id == Guid.Empty || Path.GetFileNameWithoutExtension(path) != e.Id.ToString("N") ||
+        if (e.FormatVersion != 1 || e.Id == Guid.Empty || Path.GetFileNameWithoutExtension(path) != e.Id.ToString("N") ||
             !Enum.IsDefined(e.State) || !e.Version.HasIdentity || e.Version.Size < 0 ||
             string.IsNullOrWhiteSpace(e.OriginalPath) || string.IsNullOrWhiteSpace(e.StagedPath))
             throw new InvalidDataException("Invalid recovery entry");

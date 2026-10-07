@@ -193,13 +193,22 @@ public sealed unsafe class WindowsRecoveryService
             *(IntPtr*)(p + (IntPtr.Size == 8 ? 8 : 4)) = parent.DangerousGetHandle();
             *(uint*)(p + offset - 4) = (uint)(name.Length * 2);
             name.AsSpan().CopyTo(new Span<char>(p + offset, name.Length));
-            if (!SetFileInformationByHandle(file, 3, p, (uint)info.Length))
-                throw new Win32Exception(Marshal.GetLastWin32Error(), "Не удалось восстановить файл; существующие файлы не перезаписываются");
+            // The Win32 wrapper does not accept a non-null RootDirectory on all supported hosts.
+            // Native FileRenameInformation accepts the held directory handle without path resolution.
+            nint* statusBlock = stackalloc nint[2];
+            int status = NtSetInformationFile(file, statusBlock, p, (uint)info.Length, 10 /* FileRenameInformation */);
+            if (status < 0)
+            {
+                int error = (int)RtlNtStatusToDosError(status);
+                throw new Win32Exception(error, "Не удалось восстановить файл; существующие файлы не перезаписываются: " +
+                    new Win32Exception(error).Message + " (" + error + ")");
+            }
         }
     }
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true, ExactSpelling = true)]
     private static extern SafeFileHandle CreateFileW(string path, uint access, uint share, IntPtr security, uint disposition, uint flags, IntPtr template);
     [DllImport("kernel32.dll", SetLastError = true)] private static extern bool GetFileInformationByHandleEx(SafeFileHandle file, int cls, void* info, uint size);
-    [DllImport("kernel32.dll", SetLastError = true)] private static extern bool SetFileInformationByHandle(SafeFileHandle file, int cls, void* info, uint size);
+    [DllImport("ntdll.dll")] private static extern int NtSetInformationFile(SafeFileHandle file, void* status, void* info, uint size, int cls);
+    [DllImport("ntdll.dll")] private static extern uint RtlNtStatusToDosError(int status);
 }

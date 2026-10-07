@@ -22,8 +22,9 @@ public partial class RecoveryWindow : Window
     private sealed record Row(RecoveryEntry Entry)
     {
         public string Date => Entry.DeletedUtc.ToLocalTime().ToString("g");
-        public string State => Entry.State switch
-        { RecoveryState.Staged => "Подготовлен", RecoveryState.Recycled => "В корзине", _ => "Восстановлен" };
+        public string State => Entry.State == RecoveryState.Restored ? "Восстановлен"
+            : !System.IO.File.Exists(Entry.State == RecoveryState.Recycled ? Entry.RecyclePath : Entry.StagedPath) ? "Недоступен"
+            : Entry.State == RecoveryState.Staged ? "Подготовлен" : "В корзине";
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e) => Refresh();
