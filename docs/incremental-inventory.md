@@ -29,7 +29,7 @@ works with inventory, journal, or cache unavailable.
 Telemetry distinguishes directories considered by the traversal from actual
 native enumeration: `InventoryDirectoriesReused`, `InventoryEntriesReused`,
 `InventoryRootsRebuilt`, and the native fast/fallback directory counters.
-Eighteen injected acceptance cases compare incremental output against fresh
+Nineteen injected acceptance cases compare incremental output against fresh
 scans, including aliases, renames, resets, corruption, cancellation, and competing
 checkpoints. A separate Windows case exercises the native journal.
 
@@ -44,9 +44,13 @@ back to SQLite on every warm scan.
 
 The UTF-16 codec validates the complete bounded, checksummed listing before
 replay and passes name spans directly to the handler. It creates no per-entry
-name strings during either validation or replay. Eighteen inventory cases
+name strings during either validation or replay. Nineteen inventory cases
 include forbidden-write triggers for unchanged blobs, a valid-checksum malformed
-tail, and Unicode/long-name allocation checks.
+tail, and Unicode/long-name allocation checks. Valid-checksum invalid names,
+boolean flags, sizes, and timestamps are treated as damaged listings. Their
+live replacements and checkpoint commit atomically, so the next warm scan can
+reuse the repaired inventory without content reads. Semantic format errors do
+not leave a permanently uncommittable root snapshot.
 
 Cache schema is now 5. Older schemas are discarded and rebuilt once, including
 fingerprint entries. This changes cache persistence, not the recovery history.

@@ -5,7 +5,8 @@ namespace FindCopy.Core;
 public enum RecoveryState { Staged, Recycled, Restored }
 
 public sealed record RecoveryEntry(Guid Id, string OriginalPath, string StagedPath,
-    string? RecyclePath, string? MetadataHash, MetaSnapshot Version, DateTime DeletedUtc, RecoveryState State, int FormatVersion = 1);
+    string? RecyclePath, string? MetadataHash, MetaSnapshot Version, DateTime DeletedUtc, RecoveryState State, int FormatVersion = 1,
+    bool RestorePending = false);
 
 public sealed record RecoveryOutcome(Guid Id, string Path, bool Restored, string? Reason);
 

@@ -40,6 +40,16 @@ public sealed unsafe class WindowsRecoveryService
 
     internal static string BinMetadata(string recyclePath, string stagedPath, long size, out string hash)
     {
+        string metadata = BinMetadataPath(recyclePath);
+        using var handle = new WindowsDeletionBackend().OpenCandidate(metadata);
+        byte[] bytes = ReadMetadata(handle);
+        ValidateMetadata(bytes, stagedPath, size);
+        hash = Convert.ToHexString(SHA256.HashData(bytes));
+        return metadata;
+    }
+
+    private static string BinMetadataPath(string recyclePath)
+    {
         CheckParents(recyclePath);
         string sid = WindowsIdentity.GetCurrent().User!.Value;
         string bin = Path.Combine(Path.GetPathRoot(recyclePath)!, "$Recycle.Bin", sid);
@@ -47,12 +57,23 @@ public sealed unsafe class WindowsRecoveryService
         if (!string.Equals(Path.GetDirectoryName(recyclePath), bin, StringComparison.OrdinalIgnoreCase) ||
             !name.StartsWith("$R", StringComparison.Ordinal) || name.Length <= 2)
             throw new IOException("Не подтверждён файл в личной корзине");
-        string metadata = Path.Combine(bin, "$I" + name[2..]);
-        using var handle = new WindowsDeletionBackend().OpenCandidate(metadata);
-        byte[] bytes = ReadMetadata(handle);
-        ValidateMetadata(bytes, stagedPath, size);
-        hash = Convert.ToHexString(SHA256.HashData(bytes));
-        return metadata;
+        return Path.Combine(bin, "$I" + name[2..]);
+    }
+
+    private static SafeFileHandle? OpenRecordedMetadata(RecoveryEntry entry, bool allowMissing)
+    {
+        string path = BinMetadataPath(entry.RecyclePath!);
+        SafeFileHandle handle;
+        try { handle = OpenLockedFile(path); }
+        catch (Win32Exception ex) when (allowMissing && ex.NativeErrorCode is 2 or 3) { return null; }
+        try
+        {
+            byte[] bytes = ReadMetadata(handle); ValidateMetadata(bytes, entry.StagedPath, entry.Version.Size);
+            if (Convert.ToHexString(SHA256.HashData(bytes)) != entry.MetadataHash)
+                throw new IOException("Запись корзины изменена после удаления");
+            return handle;
+        }
+        catch { handle.Dispose(); throw; }
     }
 
     private static byte[] ReadMetadata(SafeFileHandle handle)
@@ -93,50 +114,59 @@ public sealed unsafe class WindowsRecoveryService
             CheckParents(entry.OriginalPath); CheckLocalPath(entry.StagedPath);
             if (!Path.GetFileName(Path.GetDirectoryName(entry.StagedPath)!).Equals(".FindCopy-recycle-" + id.ToString("N"), StringComparison.Ordinal))
                 throw new InvalidDataException("Не подтверждён каталог подготовки");
-            if (entry.State == RecoveryState.Staged && !File.Exists(entry.StagedPath)) entry = ResolveInterruptedRecycle(entry);
-            if (entry.State == RecoveryState.Staged) CheckParents(entry.StagedPath);
+            if (entry.State == RecoveryState.Staged && !entry.RestorePending && !File.Exists(entry.StagedPath)) entry = ResolveInterruptedRecycle(entry);
             string originalParent = Path.GetDirectoryName(entry.OriginalPath)!;
             if (!Directory.Exists(originalParent)) throw new DirectoryNotFoundException("Исходная папка отсутствует; восстановите её сначала");
             string source = entry.State == RecoveryState.Recycled ? entry.RecyclePath ?? throw new IOException("Путь корзины не сохранён") : entry.StagedPath;
             var backend = new WindowsDeletionBackend();
-            SafeFileHandle? metadata = null;
+            var parents = OpenParents(originalParent);
             try
             {
-                if (entry.State == RecoveryState.Recycled)
-                {
-                    // Hold the matching metadata object against replacement through the data move.
-                    string path = BinMetadata(source, entry.StagedPath, entry.Version.Size, out _);
-                    metadata = OpenLockedFile(path);
-                    byte[] bytes = ReadMetadata(metadata); ValidateMetadata(bytes, entry.StagedPath, entry.Version.Size);
-                    if (Convert.ToHexString(SHA256.HashData(bytes)) != entry.MetadataHash)
-                        throw new IOException("Запись корзины изменена после удаления");
-                }
-                using var candidate = OpenLockedFile(source);
+                SafeFileHandle? sourceHandle;
+                try { sourceHandle = OpenLockedFile(source); }
+                catch (Win32Exception ex) when (entry.RestorePending && ex.NativeErrorCode is 2 or 3) { sourceHandle = null; }
+                // A flushed restore intent is required before adopting an object already at its original name.
+                // An absent source alone cannot distinguish a completed restore from a failed deletion.
+                bool alreadyReturned = sourceHandle == null;
+                using var candidate = sourceHandle ?? OpenLockedFile(entry.OriginalPath);
                 var fs = new WindowsFileSystem();
-                if (!fs.TryGetSnapshot(candidate, source, out var current) || !SameVersion(entry.Version, current))
+                string candidatePath = alreadyReturned ? entry.OriginalPath : source;
+                if (!fs.TryGetSnapshot(candidate, candidatePath, out var current) || !SameVersion(entry.Version, current))
                     throw new IOException("Файл изменён или заменён после удаления; автоматическое восстановление отменено");
-                var parents = OpenParents(originalParent);
-                try
+                if (entry.State == RecoveryState.Staged && !alreadyReturned) CheckParents(entry.StagedPath);
+                using var metadata = entry.State == RecoveryState.Recycled ? OpenRecordedMetadata(entry, alreadyReturned) : null;
+                var parent = parents[^1];
+                if (!fs.TryGetSnapshot(parent, originalParent, out var parentSnapshot) || parentSnapshot.VolumeSerial != current.VolumeSerial)
+                    throw new IOException("Исходная папка находится на другом томе или недоступна");
+                if (!alreadyReturned)
                 {
-                    var parent = parents[^1];
-                    if (!fs.TryGetSnapshot(parent, originalParent, out var parentSnapshot) || parentSnapshot.VolumeSerial != current.VolumeSerial)
-                        throw new IOException("Исходная папка находится на другом томе или недоступна");
+                    entry = entry with { RestorePending = true };
+                    Journal.Save(entry);
                     RenameInto(candidate, parent, Path.GetFileName(entry.OriginalPath));
                 }
-                finally { foreach (var parent in parents) parent.Dispose(); }
                 moved = true;
-                Journal.Save(entry with { State = RecoveryState.Restored });
                 string? note = null;
                 if (metadata != null && !backend.DeletePermanently(metadata, source, out var error))
                     note = "Файл восстановлен; запись корзины не очищена: " + error;
                 if (entry.State == RecoveryState.Staged)
                 {
-                    try { File.Delete(Path.Combine(Path.GetDirectoryName(source)!, "original-path.txt")); Directory.Delete(Path.GetDirectoryName(source)!); }
-                    catch (IOException) { note = "Файл восстановлен; пустой каталог подготовки не удалён"; }
+                    try
+                    {
+                        string stagingDirectory = Path.GetDirectoryName(source)!;
+                        if (Directory.Exists(stagingDirectory))
+                        {
+                            CheckParents(source);
+                            File.Delete(Path.Combine(stagingDirectory, "original-path.txt")); Directory.Delete(stagingDirectory);
+                        }
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    { note = "Файл восстановлен; каталог подготовки не очищен: " + ex.Message; }
                 }
+                // Keep the intent retryable until cleanup and the final atomic history update both finish.
+                if (note == null) Journal.Save(entry with { State = RecoveryState.Restored, RestorePending = false });
                 return new(id, entry.OriginalPath, true, note);
             }
-            finally { metadata?.Dispose(); }
+            finally { foreach (var parent in parents) parent.Dispose(); }
         }
         catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or
             System.Text.Json.JsonException or OverflowException or Win32Exception)

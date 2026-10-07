@@ -19,6 +19,14 @@ entry locates its unique recorded staging path in the current user's bin.
 Recovery then checks the actual file version and metadata before adopting the
 result. Ambiguous or uncertain matches are refused.
 
+Before renaming a verified file back, recovery flushes `RestorePending` to the
+same history entry. After a crash, a pending entry can resume the rename or,
+when its source is absent, verify the recorded object at its original name
+and finish cleanup. Matching bytes, size, and dates alone do not suffice:
+the volume/file identity and creation time must match too. A missing source
+without a recorded restore intent is never adopted this way. Legacy history
+without this optional field defaults to no pending intent.
+
 Recovery requires the recorded volume/file identity, creation time, length,
 and last-write time to match the opened object. Rename-induced change times
 are deliberately excluded. The default restore path does not hash/read the
@@ -41,7 +49,13 @@ metadata, permission failure, or destination conflict produces an explicit
 failure and retains the history for investigation or retry. If the rename
 succeeds but history/metadata cleanup fails, the outcome says the file was
 restored and describes the remaining cleanup, avoiding an incorrect failure
-claim. Such cleanup may need manual attention before the history reflects it.
+claim. The entry stays retryable as **Завершить восстановление** until cleanup
+and the final history update succeed. A retry does not rename the returned
+object again. Existing `$I` metadata must still pass its recorded digest;
+an absent `$I` is accepted only after the pending entry's returned object is
+verified, covering a crash between metadata removal and the final save.
+Unrelated files in a staging directory are retained and prevent its removal.
+Permission failures or modified objects/metadata still need investigation.
 
 This covers deletions recorded by the new implementation. Older deletions with
 no saved recovery history cannot be reconstructed automatically. Permanent

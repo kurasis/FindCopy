@@ -232,7 +232,7 @@ internal sealed class DirectoryListing : IDisposable
             }
             return offset == payload.Length;
         }
-        catch (Exception ex) when (ex is IOException or ArgumentException or OverflowException) { return false; }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or ArgumentException or OverflowException) { return false; }
     }
 
     public static void Replay(byte[] bytes, DirEntryHandler handler, CancellationToken ct)

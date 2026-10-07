@@ -17,6 +17,19 @@ static class RecoveryTests
             Require(new RecoveryJournal(path).Get(entry.Id).State == RecoveryState.Restored &&
                 !Directory.EnumerateFiles(path, "*.tmp").Any(), "atomic update or history lost");
         });
+        test("R11 restore intent survives restart and old history defaults to no intent", () =>
+        {
+            string path = Path.Combine(root, "recovery-intent"); var journal = new RecoveryJournal(path);
+            var entry = new RecoveryEntry(Guid.NewGuid(), "original", "staged", null, null,
+                new MetaSnapshot { VolumeSerial = 1, FileIdLow = 2 }, DateTime.UtcNow, RecoveryState.Staged,
+                RestorePending: true);
+            journal.Save(entry);
+            Require(new RecoveryJournal(path).Get(entry.Id) == entry, "restore intent was lost on restart");
+            string file = Path.Combine(path, entry.Id.ToString("N") + ".json");
+            var legacy = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(file))!.AsObject();
+            legacy.Remove("RestorePending"); File.WriteAllText(file, legacy.ToJsonString());
+            Require(!new RecoveryJournal(path).Get(entry.Id).RestorePending, "legacy deletion adopted a restore intent");
+        });
         test("R10 malformed recovery history is reported without losing valid entries", () =>
         {
             string path = Path.Combine(root, "recovery-corruption"); var journal = new RecoveryJournal(path);

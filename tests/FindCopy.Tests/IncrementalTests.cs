@@ -161,6 +161,44 @@ static class IncrementalTests
             Require(f.Fs.Enumerated.Count == 1 && r.Counters.FilesDiscovered == 4, "malformed tail duplicated emitted entries");
             f.SameAsFresh(r);
         });
+        test("I19 invalid listing names, flags, and metadata heal on the next scan", () =>
+        {
+            foreach (string damage in new[] { "name", "directory flag", "identity flag", "size", "timestamp" })
+            {
+                using var f = new Fixture(parent); f.Seed(); long old = f.Checkpoint();
+                using (var db = new SqliteConnection("Data Source=" + f.Cache + ";Pooling=False"))
+                {
+                    db.Open(); using var c = db.CreateCommand();
+                    c.CommandText = "SELECT entries FROM inventory_dirs WHERE path=$p;";
+                    string p = Path.Combine(f.Root, "x");
+                    c.Parameters.AddWithValue("$p", OperatingSystem.IsWindows() ? p.ToUpperInvariant() : p);
+                    byte[] bytes = (byte[])c.ExecuteScalar()!;
+                    int second = 8 + 68 + 2 * BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(8));
+                    int metadata = second + 2 + 2 * BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(second));
+                    switch (damage)
+                    {
+                        case "name": BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(second + 2), '/'); break;
+                        case "directory flag": bytes[metadata] = 2; break;
+                        case "identity flag": bytes[metadata + 25] = 2; break;
+                        case "size": BinaryPrimitives.WriteInt64LittleEndian(bytes.AsSpan(metadata + 9), -1); break;
+                        case "timestamp": BinaryPrimitives.WriteInt64LittleEndian(bytes.AsSpan(metadata + 17), -1); break;
+                    }
+                    BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(bytes.Length - 8),
+                        System.IO.Hashing.XxHash3.HashToUInt64(bytes.AsSpan(0, bytes.Length - 8)));
+                    c.CommandText = "UPDATE inventory_dirs SET entries=$e WHERE path=$p;";
+                    c.Parameters.AddWithValue("$e", bytes); c.ExecuteNonQuery();
+                }
+                f.Fs.Next++;
+                var refreshed = f.Scan();
+                Require(f.Fs.Enumerated.Count == 1 && refreshed.Counters.FilesDiscovered == 4 &&
+                    refreshed.Counters.CacheNote == null && f.Checkpoint() > old, damage + " prevented atomic cache repair");
+                f.SameAsFresh(refreshed);
+                var warm = f.Scan();
+                Require(f.Fs.Enumerated.Count == 0 && warm.Counters.InventoryDirectoriesReused == 3 &&
+                    warm.Counters.ContentBytesRead == 0, damage + " remained damaged after refresh");
+                f.SameAsFresh(warm);
+            }
+        });
         test("I18 inventory span codec preserves Unicode and avoids per-entry allocations", () =>
         {
             using var listing = new DirectoryListing();

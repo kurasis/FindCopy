@@ -209,6 +209,104 @@ static class WindowsAcceptanceTests
             Require(result.Restored && result.Reason == null && File.ReadAllText(original) == "interrupted bytes" &&
                 service.Journal.Get(entry.Id).State == RecoveryState.Restored, "interrupted recycle recovery: " + result.Reason);
         });
+        test("W14 a returned staged object completes pending cleanup after restart", () =>
+        {
+            string d = Path.Combine(root, "restore-returned-stage"); Directory.CreateDirectory(d);
+            string original = Path.Combine(d, "file"); File.WriteAllText(original, "returned staged bytes");
+            var service = new WindowsRecoveryService(Path.Combine(root, "history-returned-stage"));
+            var backend = new WindowsDeletionBackend(service.Journal.DirectoryPath);
+            using (var h = backend.OpenCandidate(original)) Require(backend.StageForRecycle(h, original, out _, out var error), "stage: " + error);
+            var entry = service.Journal.Load(out _).Single();
+            service.Journal.Save(entry with { RestorePending = true });
+            File.Move(entry.StagedPath, original); // Crash after the data rename, before cleanup and final save.
+            string blocker = Path.Combine(Path.GetDirectoryName(entry.StagedPath)!, "unrelated");
+            File.WriteAllText(blocker, "must survive");
+            var incomplete = service.Restore(entry.Id);
+            Require(incomplete.Restored && incomplete.Reason != null && service.Journal.Get(entry.Id).RestorePending &&
+                File.ReadAllText(blocker) == "must survive", "cleanup failure was marked complete or removed unrelated data");
+            File.Delete(blocker);
+            var result = new WindowsRecoveryService(service.Journal.DirectoryPath).Restore(entry.Id);
+            Require(result.Restored && result.Reason == null && File.ReadAllText(original) == "returned staged bytes" &&
+                !Directory.Exists(Path.GetDirectoryName(entry.StagedPath)) && service.Journal.Get(entry.Id) is
+                { State: RecoveryState.Restored, RestorePending: false }, "pending staged cleanup: " + result.Reason);
+        });
+        test("W15 returned bin objects reconcile before and after metadata cleanup", () =>
+        {
+            foreach (bool metadataRemoved in new[] { false, true })
+            {
+                string suffix = metadataRemoved ? "cleaned" : "uncleaned";
+                string d = Path.Combine(root, "restore-returned-bin-" + suffix); Directory.CreateDirectory(d);
+                string original = Path.Combine(d, "file"); File.WriteAllText(original, "returned bin bytes");
+                var service = new WindowsRecoveryService(Path.Combine(root, "history-returned-bin-" + suffix));
+                var backend = new WindowsDeletionBackend(service.Journal.DirectoryPath); string staged;
+                using (var h = backend.OpenCandidate(original)) Require(backend.StageForRecycle(h, original, out staged, out var error), "stage: " + error);
+                Require(backend.MoveToRecycleBin(staged, out var error2) && error2 == null, "recycle: " + error2);
+                var entry = service.Journal.Load(out _).Single();
+                string metadata = Path.Combine(Path.GetDirectoryName(entry.RecyclePath)!, "$I" + Path.GetFileName(entry.RecyclePath)![2..]);
+                service.Journal.Save(entry with { RestorePending = true }); File.Move(entry.RecyclePath!, original);
+                if (metadataRemoved) File.Delete(metadata);
+                var result = new WindowsRecoveryService(service.Journal.DirectoryPath).Restore(entry.Id);
+                Require(result.Restored && result.Reason == null && File.ReadAllText(original) == "returned bin bytes" &&
+                    !File.Exists(metadata) && service.Journal.Get(entry.Id) is { State: RecoveryState.Restored, RestorePending: false },
+                    "pending bin cleanup " + suffix + ": " + result.Reason);
+            }
+        });
+        test("W16 pending cleanup rejects replacement objects and altered bin metadata", () =>
+        {
+            string d = Path.Combine(root, "restore-cleanup-guards"); Directory.CreateDirectory(d);
+            string original = Path.Combine(d, "file"); File.WriteAllText(original, "guarded bytes");
+            var service = new WindowsRecoveryService(Path.Combine(root, "history-cleanup-guards"));
+            var backend = new WindowsDeletionBackend(service.Journal.DirectoryPath); string staged;
+            using (var h = backend.OpenCandidate(original)) Require(backend.StageForRecycle(h, original, out staged, out var error), "stage: " + error);
+            Require(backend.MoveToRecycleBin(staged, out var error2) && error2 == null, "recycle: " + error2);
+            var entry = service.Journal.Load(out _).Single();
+            string metadata = Path.Combine(Path.GetDirectoryName(entry.RecyclePath)!, "$I" + Path.GetFileName(entry.RecyclePath)![2..]);
+            byte[] bytes = File.ReadAllBytes(metadata);
+            service.Journal.Save(entry with { RestorePending = true }); File.Move(entry.RecyclePath!, original + ".actual");
+            File.WriteAllText(original, "guarded bytes");
+            File.SetCreationTimeUtc(original, DateTime.FromFileTimeUtc(entry.Version.CreationTicks));
+            File.SetLastWriteTimeUtc(original, DateTime.FromFileTimeUtc(entry.Version.LastWriteTicks));
+            Require(!service.Restore(entry.Id).Restored && File.Exists(metadata) && service.Journal.Get(entry.Id).RestorePending &&
+                File.ReadAllText(original) == "guarded bytes", "replacement accepted or metadata removed");
+            File.Delete(original); File.Move(original + ".actual", original);
+            byte[] altered = (byte[])bytes.Clone(); altered[16] ^= 1; File.WriteAllBytes(metadata, altered);
+            Require(!service.Restore(entry.Id).Restored && File.Exists(metadata) && service.Journal.Get(entry.Id).RestorePending,
+                "altered metadata cleaned without verification");
+            File.WriteAllBytes(metadata, bytes);
+            Require(service.Restore(entry.Id) is { Restored: true, Reason: null } && !File.Exists(metadata), "valid cleanup retry failed");
+        });
+        test("W17 pending intent resumes an unperformed rename without overwriting", () =>
+        {
+            string d = Path.Combine(root, "restore-pending-rename"); Directory.CreateDirectory(d);
+            string original = Path.Combine(d, "file"); File.WriteAllText(original, "pending bytes");
+            var service = new WindowsRecoveryService(Path.Combine(root, "history-pending-rename"));
+            var backend = new WindowsDeletionBackend(service.Journal.DirectoryPath);
+            using (var h = backend.OpenCandidate(original)) Require(backend.StageForRecycle(h, original, out _, out var error), "stage: " + error);
+            var entry = service.Journal.Load(out _).Single(); service.Journal.Save(entry with { RestorePending = true });
+            File.WriteAllText(original, "destination survives");
+            Require(!service.Restore(entry.Id).Restored && File.ReadAllText(original) == "destination survives" &&
+                File.Exists(entry.StagedPath), "pending rename overwrote a destination");
+            File.Delete(original);
+            Require(service.Restore(entry.Id) is { Restored: true, Reason: null } && File.ReadAllText(original) == "pending bytes",
+                "pending intent could not resume the rename");
+        });
+        test("W18 an absent source and matching original require a recorded restore intent", () =>
+        {
+            string d = Path.Combine(root, "restore-no-intent"); Directory.CreateDirectory(d);
+            string original = Path.Combine(d, "file"); File.WriteAllText(original, "unrecorded return");
+            var service = new WindowsRecoveryService(Path.Combine(root, "history-no-intent"));
+            var backend = new WindowsDeletionBackend(service.Journal.DirectoryPath); string staged;
+            using (var h = backend.OpenCandidate(original)) Require(backend.StageForRecycle(h, original, out staged, out var error), "stage: " + error);
+            Require(backend.MoveToRecycleBin(staged, out var error2) && error2 == null, "recycle: " + error2);
+            var entry = service.Journal.Load(out _).Single();
+            string metadata = Path.Combine(Path.GetDirectoryName(entry.RecyclePath)!, "$I" + Path.GetFileName(entry.RecyclePath)![2..]);
+            File.Move(entry.RecyclePath!, original);
+            Require(!service.Restore(entry.Id).Restored && File.Exists(metadata) &&
+                service.Journal.Get(entry.Id).State == RecoveryState.Recycled && File.ReadAllText(original) == "unrecorded return",
+                "original object adopted without durable restore intent");
+            service.Journal.Save(entry with { RestorePending = true });
+            Require(service.Restore(entry.Id) is { Restored: true, Reason: null }, "fixture cleanup failed");
+        });
         test("W10 independently recycled hard-link aliases restore their original paths", () =>
         {
             string d = Path.Combine(root, "restore-aliases"); Directory.CreateDirectory(d);

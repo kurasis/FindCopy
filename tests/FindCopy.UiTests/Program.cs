@@ -210,6 +210,38 @@ internal static class Program
                 }
                 finally { recovery.Close(); }
             });
+            await Test("UI14 pending restore cleanup remains available and completes through the history window", async () =>
+            {
+                string directory = Path.Combine(root, "ui-pending-recovery"); Directory.CreateDirectory(directory);
+                string original = Path.Combine(directory, "returned.txt"); File.WriteAllText(original, "UI pending bytes");
+                string history = Path.Combine(root, "ui-pending-history");
+                var backend = new WindowsDeletionBackend(history);
+                using (var h = backend.OpenCandidate(original))
+                    Require(backend.StageForRecycle(h, original, out _, out var error), "UI stage: " + error);
+                var journal = new RecoveryJournal(history); var entry = journal.Load(out _).Single();
+                File.WriteAllText(Path.Combine(history, entry.Id.ToString("N") + ".json"),
+                    System.Text.Json.JsonSerializer.Serialize(entry with { RestorePending = true },
+                        new System.Text.Json.JsonSerializerOptions { IncludeFields = true }));
+                File.Move(entry.StagedPath, original);
+                var recovery = new RecoveryWindow(history) { Owner = window, ConfirmationSink = _ => true,
+                    NotificationSink = (message, _) => throw new Exception(message) };
+                recovery.Show();
+                try
+                {
+                    var grid = Control<DataGrid>(recovery, "HistoryGrid");
+                    Require(grid.Items.Count == 1 && (string)grid.Items[0].GetType().GetProperty("State")!.GetValue(grid.Items[0])! ==
+                        "Завершить восстановление", "pending cleanup status missing");
+                    grid.SelectedIndex = 0;
+                    Require(Control<Button>(recovery, "RestoreButton").IsEnabled, "pending cleanup retry disabled");
+                    Screenshot(recovery, "pending-history.png"); Click(recovery, "RestoreButton");
+                    await Wait(() => recovery.FilesRestored == 1 && Control<Button>(recovery, "RefreshButton").IsEnabled);
+                    Require(File.ReadAllText(original) == "UI pending bytes" && journal.Load(out _).Single() is
+                        { State: RecoveryState.Restored, RestorePending: false }, "pending cleanup did not complete");
+                    grid.SelectedIndex = 0;
+                    Require(!Control<Button>(recovery, "RestoreButton").IsEnabled, "completed cleanup retry enabled");
+                }
+                finally { recovery.Close(); }
+            });
             if (_published != null)
                 await Test("UI12 published executable scans, recycles, and restores a selected copy", async () =>
                 {
