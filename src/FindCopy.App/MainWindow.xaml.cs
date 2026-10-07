@@ -374,7 +374,7 @@ public partial class MainWindow : Window
             };
             keep.SetChecked(false, notifyGroup: false);
             foreach (var f in g.Files.Where(f => f != keep)) f.SetChecked(true, notifyGroup: false);
-            g.OnSelectionChanged();
+            g.OnSelectionChanged(notifySelection: false);
         }
         UpdateSelection();
     }
@@ -384,7 +384,7 @@ public partial class MainWindow : Window
         foreach (var g in _groups)
         {
             foreach (var f in g.Files) f.SetChecked(false, notifyGroup: false);
-            g.OnSelectionChanged();
+            g.OnSelectionChanged(notifySelection: false);
         }
         UpdateSelection();
     }

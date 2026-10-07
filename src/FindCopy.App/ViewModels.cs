@@ -84,10 +84,10 @@ public sealed class GroupVM : INotifyPropertyChanged
     /// <summary>A group must keep at least one copy: the last unchecked file cannot be checked.</summary>
     internal bool CanCheckOneMore => Files.Count(f => !f.IsChecked) > 1;
 
-    internal void OnSelectionChanged()
+    internal void OnSelectionChanged(bool notifySelection = true)
     {
         PropertyChanged?.Invoke(this, new(nameof(SelectionText)));
-        _selectionChanged?.Invoke();
+        if (notifySelection) _selectionChanged?.Invoke();
     }
 
     internal void OnRefused() => _refused?.Invoke();
