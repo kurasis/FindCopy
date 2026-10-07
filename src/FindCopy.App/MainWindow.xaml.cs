@@ -606,7 +606,9 @@ public partial class MainWindow : Window
             Filter = "CSV (разделитель «;»)|*.csv",
             FileName = $"FindCopy-{DateTime.Now:yyyy-MM-dd_HH-mm}.csv",
         };
-        if (dlg.ShowDialog(this) != true) return;
+        var accepted = dlg.ShowDialog(this);
+        if (NotificationSink != null) Console.WriteLine($"CSV_DIALOG_RESULT: accepted={accepted}; path={dlg.FileName}");
+        if (accepted != true) return;
         static string Q(string s) => "\"" + s.Replace("\"", "\"\"") + "\"";
         var sb = new StringBuilder();
         sb.AppendLine("Группа;Путь;Размер (байт);Изменён;Проверка;BLAKE3;Жёсткая ссылка на");
@@ -623,6 +625,7 @@ public partial class MainWindow : Window
         try
         {
             File.WriteAllText(dlg.FileName, sb.ToString(), new UTF8Encoding(true));
+            if (NotificationSink != null) Console.WriteLine($"CSV_WRITTEN: path={dlg.FileName}; exists={File.Exists(dlg.FileName)}");
         }
         catch (Exception ex)
         {
