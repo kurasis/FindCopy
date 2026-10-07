@@ -23,8 +23,15 @@ try {
     & icacls $output /grant "${name}:(OI)(CI)M" | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'Could not grant test account artifact access.' }
     $credential = [PSCredential]::new("$env:COMPUTERNAME\$name", $secret)
-    $arguments = '"{0}" --require-standard-user --published-exe "{1}"' -f $output, $published
-    $process = Start-Process -FilePath $runner -ArgumentList $arguments -Credential $credential -LoadUserProfile `
+    $temporary = Join-Path $output 'temp'
+    New-Item -ItemType Directory -Path $temporary | Out-Null
+    function Literal([string]$value) { return "'" + $value.Replace("'", "''") + "'" }
+    # Credentialed processes otherwise inherit the administrator's inaccessible TEMP path.
+    $command = '$env:TEMP = ' + (Literal $temporary) + '; $env:TMP = $env:TEMP; & ' + (Literal $runner) + ' ' +
+        (Literal $output) + ' --require-standard-user --published-exe ' + (Literal $published) + '; exit $LASTEXITCODE'
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+    $shell = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
+    $process = Start-Process -FilePath $shell -ArgumentList "-NoProfile -NonInteractive -EncodedCommand $encoded" -Credential $credential -LoadUserProfile `
         -WorkingDirectory (Split-Path $runner) -PassThru -RedirectStandardOutput (Join-Path $output 'stdout.txt') `
         -RedirectStandardError (Join-Path $output 'stderr.txt')
     if (-not $process.WaitForExit(240000)) { $process.Kill($true); throw 'Standard-user acceptance timed out.' }

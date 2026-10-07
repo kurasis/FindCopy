@@ -28,6 +28,16 @@ jobs:
           "FINDCOPY_SCALE_WORK=$work" >> $env:GITHUB_ENV
           Get-CimInstance Win32_OperatingSystem | Select-Object Caption, Version, TotalVisibleMemorySize | Format-List
           Get-Volume | Select-Object DriveLetter, FileSystem, SizeRemaining, Size | Format-Table
+          # The runner's temporary data volume may not have journaling enabled.
+          & fsutil usn createjournal m=536870912 a=67108864 "$($drive.Name):"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not enable the native acceptance journal.' }
+      - name: Fully written fifty-GiB files, exact comparison, cancellation, and cache
+        run: dotnet run -c Release --no-build --project tools/FindCopy.Bench -- "$env:FINDCOPY_SCALE_WORK/dense" --extended-acceptance dense 51200
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: FindCopy-windows-dense-acceptance
+          path: ${{ env.FINDCOPY_SCALE_WORK }}/dense/extended-acceptance.csv
       - name: Native acceptance runner smoke on twenty thousand real files
         run: dotnet run -c Release --no-build --project tools/FindCopy.Bench -- "$env:FINDCOPY_SCALE_WORK" --extended-acceptance native 20000
       - name: Five million real NTFS files, USN changes, and cancellation
