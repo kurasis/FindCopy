@@ -11,6 +11,13 @@
   Git worktrees unless explicitly requested.
 - Keep application fixes separate from source import and audit changes unless
   fixing them is part of the requested task.
+- When developing or changing a web interface, use
+  [web-design-guidelines](.agents/skills/web-design-guidelines/SKILL.md) to review
+  the result. For UI, UX, or accessibility audit requests, explicitly apply this
+  skill and state that it is being used. Fetch its current guidelines before
+  each review; if fetching fails, report the limitation. Apply web-specific
+  rules only to web content; for the existing WPF interface, distinguish
+  applicable general guidance from HTML/browser requirements.
 - Build with .NET 8. Run the baseline console suite with
   `dotnet run -c Release --project tests/FindCopy.Tests`.
 - Run acceptance regressions with
