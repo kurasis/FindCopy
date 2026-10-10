@@ -23,6 +23,8 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        // Preserve the minimum-size result viewport; larger windows can expose more options.
+        SizeChanged += (_, _) => SearchCard.MaxHeight = Math.Clamp(ActualHeight - 390, 170, 340);
         _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
         _timer.Tick += (_, _) => RefreshProgress();
         FolderBox.Text = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);

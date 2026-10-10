@@ -14,6 +14,47 @@
   <Window.Resources>
     <BooleanToVisibilityConverter x:Key="BoolToVis"/>
 
+    <Style x:Key="ResultText" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource TextMain}"/>
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=TreeViewItem}}" Value="True">
+          <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+        </DataTrigger>
+        <MultiDataTrigger>
+          <MultiDataTrigger.Conditions>
+            <Condition Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=TreeViewItem}}" Value="True"/>
+            <Condition Binding="{Binding IsSelectionActive, RelativeSource={RelativeSource AncestorType=TreeViewItem}}" Value="False"/>
+          </MultiDataTrigger.Conditions>
+          <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}}"/>
+        </MultiDataTrigger>
+      </Style.Triggers>
+    </Style>
+    <Style x:Key="ResultMutedText" TargetType="TextBlock" BasedOn="{StaticResource ResultText}">
+      <Setter Property="Foreground" Value="{DynamicResource TextMuted}"/>
+    </Style>
+    <Style x:Key="ResultWarningText" TargetType="TextBlock" BasedOn="{StaticResource ResultText}">
+      <Setter Property="Foreground" Value="{DynamicResource Warn}"/>
+    </Style>
+    <Style x:Key="ResultSelectionText" TargetType="TextBlock" BasedOn="{StaticResource ResultText}">
+      <Setter Property="Foreground" Value="{DynamicResource DangerText}"/>
+    </Style>
+    <Style x:Key="ResultDirectoryRun" TargetType="Run">
+      <Setter Property="Foreground" Value="{DynamicResource TextMuted}"/>
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=TreeViewItem}}" Value="True">
+          <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+        </DataTrigger>
+        <MultiDataTrigger>
+          <MultiDataTrigger.Conditions>
+            <Condition Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=TreeViewItem}}" Value="True"/>
+            <Condition Binding="{Binding IsSelectionActive, RelativeSource={RelativeSource AncestorType=TreeViewItem}}" Value="False"/>
+          </MultiDataTrigger.Conditions>
+          <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}}"/>
+        </MultiDataTrigger>
+      </Style.Triggers>
+    </Style>
+
+
     <HierarchicalDataTemplate DataType="{x:Type local:GroupVM}" ItemsSource="{Binding Files}">
       <Grid Margin="0,6,0,4">
         <Grid.ColumnDefinitions>
@@ -24,9 +65,9 @@
           <TextBlock Text="{Binding Number}" Foreground="{DynamicResource HashBadgeFg}" FontWeight="SemiBold"/>
         </Border>
         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-          <TextBlock Text="{Binding Title}" FontWeight="SemiBold" Foreground="{DynamicResource TextMain}"/>
-          <TextBlock Text="  ·  " Foreground="{DynamicResource TextMuted}"/>
-          <TextBlock Text="{Binding Reclaim}" Foreground="{DynamicResource TextMuted}"/>
+          <TextBlock Text="{Binding Title}" FontWeight="SemiBold" Style="{StaticResource ResultText}"/>
+          <TextBlock Text="  ·  " Style="{StaticResource ResultMutedText}"/>
+          <TextBlock Text="{Binding Reclaim}" Style="{StaticResource ResultMutedText}"/>
           <Border CornerRadius="4" Padding="7,1" Margin="12,0,0,0">
             <Border.Style>
               <Style TargetType="Border">
@@ -47,7 +88,7 @@
               </TextBlock.Style>
             </TextBlock>
           </Border>
-          <TextBlock Text="{Binding SelectionText}" Foreground="{DynamicResource DangerText}" FontWeight="SemiBold" Margin="12,0,0,0"/>
+          <TextBlock Text="{Binding SelectionText}" Style="{StaticResource ResultSelectionText}" FontWeight="SemiBold" Margin="12,0,0,0"/>
         </StackPanel>
       </Grid>
     </HierarchicalDataTemplate>
@@ -70,13 +111,13 @@
          <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Top"
                    Margin="0,2,8,0" AutomationProperties.Name="{Binding Path, StringFormat=Отметить для удаления: {0}}" ToolTip="{Binding Path}"/>
          <StackPanel Grid.Column="1">
-          <TextBlock>
-            <Run Text="{Binding FileName, Mode=OneWay}" Foreground="{DynamicResource TextMain}"/>
+          <TextBlock Style="{StaticResource ResultText}">
+            <Run Text="{Binding FileName, Mode=OneWay}"/>
             <Run Text="   "/>
-            <Run Text="{Binding Directory, Mode=OneWay}" Foreground="{DynamicResource TextMuted}"/>
+            <Run Text="{Binding Directory, Mode=OneWay}" Style="{StaticResource ResultDirectoryRun}"/>
           </TextBlock>
-          <TextBlock Text="{Binding Info}" FontSize="11.5" Foreground="{DynamicResource TextMuted}"/>
-          <TextBlock Text="{Binding AliasText}" FontSize="11.5" Foreground="{DynamicResource Warn}" TextWrapping="Wrap"
+          <TextBlock Text="{Binding Info}" FontSize="11.5" Style="{StaticResource ResultMutedText}"/>
+          <TextBlock Text="{Binding AliasText}" FontSize="11.5" Style="{StaticResource ResultWarningText}" TextWrapping="Wrap"
                      Visibility="{Binding HasAliases, Converter={StaticResource BoolToVis}}"/>
          </StackPanel>
         </Grid>
@@ -84,7 +125,7 @@
     </DataTemplate>
   </Window.Resources>
 
-  <Grid Margin="20,16,20,16">
+  <Grid Margin="20,12,20,12">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
@@ -94,7 +135,7 @@
     </Grid.RowDefinitions>
 
     <!-- Header -->
-    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="2,0,0,14">
+    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="2,0,0,8">
       <Image Source="app.ico" Width="32" Height="32" Margin="0,0,12,0" VerticalAlignment="Center"/>
       <StackPanel VerticalAlignment="Center">
         <TextBlock Text="Поиск дубликатов файлов" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource TextMain}"/>
@@ -103,7 +144,7 @@
     </StackPanel>
 
     <!-- Settings card -->
-    <Border Grid.Row="1" Style="{StaticResource Card}" MaxHeight="200">
+    <Border x:Name="SearchCard" Grid.Row="1" Style="{StaticResource Card}" MaxHeight="170" Padding="12,8">
       <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
       <Grid>
         <Grid.RowDefinitions>
@@ -159,7 +200,7 @@
     </Border>
 
     <!-- Progress -->
-    <StackPanel Grid.Row="2" Margin="2,12,2,10">
+    <StackPanel Grid.Row="2" Margin="2,8,2,6">
       <Grid>
         <TextBlock x:Name="PhaseText" AutomationProperties.LiveSetting="Polite" Text="Готов к поиску" Foreground="{DynamicResource TextMain}" FontWeight="SemiBold"/>
         <TextBlock x:Name="ElapsedText" HorizontalAlignment="Right" Foreground="{DynamicResource TextMuted}"/>

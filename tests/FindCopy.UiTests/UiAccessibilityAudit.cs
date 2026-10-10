@@ -194,6 +194,7 @@ internal static class UiAccessibilityAudit
 
     private static async Task CheckHighContrast(MainWindow main)
     {
+        Color originalBackground = ((SolidColorBrush)main.Background).Color;
         var original = new HighContrast { Size = (uint)Marshal.SizeOf<HighContrast>() };
         if (!SystemParametersInfo(0x0042, original.Size, ref original, 0))
             throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "SPI_GETHIGHCONTRAST");
@@ -222,6 +223,19 @@ internal static class UiAccessibilityAudit
                 double fileContrast = Contrast(fileForeground, resultBackground);
                 Check("High-contrast file name readability", fileContrast >= 4.5,
                     $"foreground={fileForeground}; result background={resultBackground}; ratio={fileContrast:F4}:1");
+                var group = resultTree.Items.Cast<GroupVM>().Single();
+                var groupItem = (TreeViewItem)resultTree.ItemContainerGenerator.ContainerFromItem(group);
+                var fileItem = (TreeViewItem)groupItem.ItemContainerGenerator.ContainerFromItem(group.Files[0]);
+                fileItem.IsSelected = true;
+                await Settle();
+                Color selectedBackground = fileItem.IsSelectionActive ? SystemColors.HighlightColor : SystemColors.InactiveSelectionHighlightBrush.Color;
+                foreach (var run in Descendants<TextBlock>(fileItem).SelectMany(t => t.Inlines.OfType<System.Windows.Documents.Run>())
+                    .Where(r => !string.IsNullOrWhiteSpace(r.Text)))
+                {
+                    double selectedContrast = Contrast(((SolidColorBrush)run.Foreground).Color, selectedBackground);
+                    Check("High-contrast selected file text readability", selectedContrast >= 4.5,
+                        $"active={fileItem.IsSelectionActive}; foreground={((SolidColorBrush)run.Foreground).Color}; background={selectedBackground}; ratio={selectedContrast:F4}:1");
+                }
                 Save(main, "actual-high-contrast.png");
             }
         }
@@ -234,6 +248,8 @@ internal static class UiAccessibilityAudit
                 await Task.Delay(500); await Settle();
                 Check("Original high-contrast setting restored", SystemParameters.HighContrast == ((original.Flags & 1) != 0),
                     $"restored WPF HighContrast={SystemParameters.HighContrast}");
+                Check("Application palette restored after high contrast", ((SolidColorBrush)main.Background).Color == originalBackground,
+                    $"original={originalBackground}; restored={((SolidColorBrush)main.Background).Color}");
             }
         }
     }

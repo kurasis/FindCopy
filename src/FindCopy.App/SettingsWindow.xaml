@@ -34,7 +34,7 @@
               <TextBlock Text="64–65536; сразу полный хеш" TextWrapping="Wrap" Foreground="{DynamicResource TextMuted}" FontSize="11.5"/>
             </StackPanel>
             <StackPanel Grid.Row="0" Grid.Column="1" Margin="0,3">
-              <TextBox x:Name="ThresholdBox" AutomationProperties.LabeledBy="{Binding ElementName=ThresholdLabel}" HorizontalContentAlignment="Right"/>
+              <TextBox x:Name="ThresholdBox" AutomationProperties.Name="{Binding Content, ElementName=ThresholdLabel}" AutomationProperties.LabeledBy="{Binding ElementName=ThresholdLabel}" HorizontalContentAlignment="Right"/>
               <TextBlock x:Name="ThresholdError" TextWrapping="Wrap" Foreground="{DynamicResource DangerText}" AutomationProperties.LiveSetting="Polite"/>
             </StackPanel>
             <StackPanel Grid.Row="1" Margin="0,6,12,6" VerticalAlignment="Center">
@@ -44,7 +44,7 @@
               <TextBlock Text="4–1024; не больше порога файла" TextWrapping="Wrap" Foreground="{DynamicResource TextMuted}" FontSize="11.5"/>
             </StackPanel>
             <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,3">
-              <TextBox x:Name="SampleBox" AutomationProperties.LabeledBy="{Binding ElementName=SampleLabel}" HorizontalContentAlignment="Right"/>
+              <TextBox x:Name="SampleBox" AutomationProperties.Name="{Binding Content, ElementName=SampleLabel}" AutomationProperties.LabeledBy="{Binding ElementName=SampleLabel}" HorizontalContentAlignment="Right"/>
               <TextBlock x:Name="SampleError" TextWrapping="Wrap" Foreground="{DynamicResource DangerText}" AutomationProperties.LiveSetting="Polite"/>
             </StackPanel>
             <StackPanel Grid.Row="2" Margin="0,6,12,6" VerticalAlignment="Center">
@@ -54,7 +54,7 @@
               <TextBlock Text="64–16384" TextWrapping="Wrap" Foreground="{DynamicResource TextMuted}" FontSize="11.5"/>
             </StackPanel>
             <StackPanel Grid.Row="2" Grid.Column="1" Margin="0,3">
-              <TextBox x:Name="BufferBox" AutomationProperties.LabeledBy="{Binding ElementName=BufferLabel}" HorizontalContentAlignment="Right"/>
+              <TextBox x:Name="BufferBox" AutomationProperties.Name="{Binding Content, ElementName=BufferLabel}" AutomationProperties.LabeledBy="{Binding ElementName=BufferLabel}" HorizontalContentAlignment="Right"/>
               <TextBlock x:Name="BufferError" TextWrapping="Wrap" Foreground="{DynamicResource DangerText}" AutomationProperties.LiveSetting="Polite"/>
             </StackPanel>
             <StackPanel Grid.Row="4" Margin="0,6,12,6" VerticalAlignment="Center">
@@ -64,7 +64,7 @@
               <TextBlock Text="1–16 одновременных чтений" TextWrapping="Wrap" Foreground="{DynamicResource TextMuted}" FontSize="11.5"/>
             </StackPanel>
             <StackPanel Grid.Row="4" Grid.Column="1" Margin="0,3">
-              <TextBox x:Name="HddBox" AutomationProperties.LabeledBy="{Binding ElementName=HddLabel}" HorizontalContentAlignment="Right"/>
+              <TextBox x:Name="HddBox" AutomationProperties.Name="{Binding Content, ElementName=HddLabel}" AutomationProperties.LabeledBy="{Binding ElementName=HddLabel}" HorizontalContentAlignment="Right"/>
               <TextBlock x:Name="HddError" TextWrapping="Wrap" Foreground="{DynamicResource DangerText}" AutomationProperties.LiveSetting="Polite"/>
             </StackPanel>
             <StackPanel Grid.Row="5" Margin="0,6,12,6" VerticalAlignment="Center">
@@ -74,7 +74,7 @@
               <TextBlock Text="1–16 одновременных чтений" TextWrapping="Wrap" Foreground="{DynamicResource TextMuted}" FontSize="11.5"/>
             </StackPanel>
             <StackPanel Grid.Row="5" Grid.Column="1" Margin="0,3">
-              <TextBox x:Name="SsdBox" AutomationProperties.LabeledBy="{Binding ElementName=SsdLabel}" HorizontalContentAlignment="Right"/>
+              <TextBox x:Name="SsdBox" AutomationProperties.Name="{Binding Content, ElementName=SsdLabel}" AutomationProperties.LabeledBy="{Binding ElementName=SsdLabel}" HorizontalContentAlignment="Right"/>
               <TextBlock x:Name="SsdError" TextWrapping="Wrap" Foreground="{DynamicResource DangerText}" AutomationProperties.LiveSetting="Polite"/>
             </StackPanel>
             <StackPanel Grid.Row="6" Margin="0,6,12,6" VerticalAlignment="Center">
@@ -84,7 +84,7 @@
               <TextBlock Text="1–16 одновременных чтений" TextWrapping="Wrap" Foreground="{DynamicResource TextMuted}" FontSize="11.5"/>
             </StackPanel>
             <StackPanel Grid.Row="6" Grid.Column="1" Margin="0,3">
-              <TextBox x:Name="NvmeBox" AutomationProperties.LabeledBy="{Binding ElementName=NvmeLabel}" HorizontalContentAlignment="Right"/>
+              <TextBox x:Name="NvmeBox" AutomationProperties.Name="{Binding Content, ElementName=NvmeLabel}" AutomationProperties.LabeledBy="{Binding ElementName=NvmeLabel}" HorizontalContentAlignment="Right"/>
               <TextBlock x:Name="NvmeError" TextWrapping="Wrap" Foreground="{DynamicResource DangerText}" AutomationProperties.LiveSetting="Polite"/>
             </StackPanel>
             <StackPanel Grid.Row="8" Margin="0,6,12,6" VerticalAlignment="Center">
@@ -94,7 +94,7 @@
               <TextBlock Text="1–16 одновременных чтений" TextWrapping="Wrap" Foreground="{DynamicResource TextMuted}" FontSize="11.5"/>
             </StackPanel>
             <StackPanel Grid.Row="8" Grid.Column="1" Margin="0,3">
-              <TextBox x:Name="NetBox" AutomationProperties.LabeledBy="{Binding ElementName=NetLabel}" HorizontalContentAlignment="Right"/>
+              <TextBox x:Name="NetBox" AutomationProperties.Name="{Binding Content, ElementName=NetLabel}" AutomationProperties.LabeledBy="{Binding ElementName=NetLabel}" HorizontalContentAlignment="Right"/>
               <TextBlock x:Name="NetError" TextWrapping="Wrap" Foreground="{DynamicResource DangerText}" AutomationProperties.LiveSetting="Polite"/>
             </StackPanel>
             <StackPanel Grid.Row="9" Margin="0,6,12,6" VerticalAlignment="Center">
@@ -104,7 +104,7 @@
               <TextBlock Text="1–16 одновременных чтений" TextWrapping="Wrap" Foreground="{DynamicResource TextMuted}" FontSize="11.5"/>
             </StackPanel>
             <StackPanel Grid.Row="9" Grid.Column="1" Margin="0,3">
-              <TextBox x:Name="UnknownBox" AutomationProperties.LabeledBy="{Binding ElementName=UnknownLabel}" HorizontalContentAlignment="Right"/>
+              <TextBox x:Name="UnknownBox" AutomationProperties.Name="{Binding Content, ElementName=UnknownLabel}" AutomationProperties.LabeledBy="{Binding ElementName=UnknownLabel}" HorizontalContentAlignment="Right"/>
               <TextBlock x:Name="UnknownError" TextWrapping="Wrap" Foreground="{DynamicResource DangerText}" AutomationProperties.LiveSetting="Polite"/>
             </StackPanel>
             <TextBlock Grid.Row="3" Grid.ColumnSpan="2" Text="Одновременных полных чтений на один диск:" FontWeight="SemiBold" Margin="0,12,0,2" TextWrapping="Wrap"/>
