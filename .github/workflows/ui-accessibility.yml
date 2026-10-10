@@ -1,0 +1,43 @@
+name: Audit Windows UI accessibility
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/ui-accessibility.yml'
+      - 'tests/FindCopy.UiTests/**'
+      - 'src/FindCopy.App/**'
+      - 'docs/ui-accessibility-audit-*.md'
+permissions:
+  contents: read
+jobs:
+  accessibility:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runtime: win-arm64
+            architecture: Arm64
+          - runtime: win-x64
+            architecture: X64
+    runs-on: windows-11-arm
+    timeout-minutes: 15
+    env:
+      FINDCOPY_EXPECTED_ARCH: ${{ matrix.architecture }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require Windows 11 ARM64 client
+        run: ./tools/record-windows11-environment.ps1
+      - name: Install checksum-verified pinned SDK
+        shell: powershell
+        run: ./tools/setup-windows-dotnet.ps1
+      - name: Build self-contained UI audit runner
+        run: dotnet build tests/FindCopy.UiTests -c Release -m:2 -p:RuntimeIdentifier=${{ matrix.runtime }} -p:SelfContained=true
+      - name: Probe actual WPF accessibility, input, contrast and DPI
+        run: ./tests/FindCopy.UiTests/bin/Release/net8.0-windows10.0.17763.0/${{ matrix.runtime }}/FindCopy.UiTests.exe ui-accessibility-artifacts --accessibility-audit
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: FindCopy-accessibility-${{ matrix.runtime }}
+          path: |
+            ui-accessibility-artifacts
+            windows-environment.json
