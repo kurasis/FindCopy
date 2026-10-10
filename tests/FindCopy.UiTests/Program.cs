@@ -49,11 +49,21 @@ internal static class Program
         }
         var app = new App { CreateStartupWindow = false }; app.InitializeComponent();
         app.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        bool accessibilityAudit = args.Contains("--accessibility-audit");
         app.Dispatcher.InvokeAsync(async () =>
         {
-            try { await Run(); }
+            try
+            {
+                if (accessibilityAudit) _failed = await UiAccessibilityAudit.Run(_artifacts);
+                else await Run();
+            }
             catch (Exception ex) { _failed++; Console.WriteLine("FAIL UI runner: " + ex); }
-            finally { Console.WriteLine($"{_passed} passed, {_failed} failed"); app.Shutdown(_failed == 0 ? 0 : 1); }
+            finally
+            {
+                if (accessibilityAudit) Console.WriteLine($"ACCESSIBILITY_AUDIT: failures={_failed}");
+                else Console.WriteLine($"{_passed} passed, {_failed} failed");
+                app.Shutdown(_failed == 0 ? 0 : 1);
+            }
         }, DispatcherPriority.ApplicationIdle);
         return app.Run();
     }
