@@ -150,9 +150,25 @@ internal static class UiAccessibilityAudit
         Keyboard.Focus(folder);
         await Settle();
         bool foreground = GetForegroundWindow() == hwnd;
-        Check("Keyboard desktop available", foreground && folder.IsKeyboardFocused,
-            $"foreground={foreground}; folder focus={folder.IsKeyboardFocused}");
-        if (!foreground || !folder.IsKeyboardFocused) return;
+        if (!foreground || !folder.IsKeyboardFocused)
+        {
+            Record("Physical keyboard input on hosted desktop", "UNVERIFIED",
+                $"foreground={foreground}; folder focus={folder.IsKeyboardFocused}; SendInput cannot be attributed to the app without foreground ownership.");
+            bool moved = folder.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next));
+            var next = Keyboard.FocusedElement as Button;
+            Check("WPF forward focus traversal reaches browse button", moved && next?.Content?.ToString() == "Обзор…",
+                $"MoveFocus={moved}; focused={Keyboard.FocusedElement?.GetType().Name}; content={next?.Content}; this is not physical keyboard input");
+            if (next != null)
+            {
+                Check("Keyboard focus visual configured", next.FocusVisualStyle != null,
+                    $"FocusVisualStyle={(next.FocusVisualStyle == null ? "null" : "present")}; actual keyboard focus rendering remains unverified");
+                Save(main, "programmatic-focus.png");
+            }
+            Record("Complete keyboard traversal and focus visibility", "UNVERIFIED",
+                "WPF focus traversal is exercised separately. Physical Tab/Space and every visible focus indicator require an interactive foreground desktop.");
+            return;
+        }
+        Check("Keyboard desktop available", true, "The application owns the foreground and FolderBox keyboard focus.");
         Key(0x09); // Physical Tab via SendInput, not a synthesized WPF routed event.
         await Settle();
         var browse = Keyboard.FocusedElement as Button;
@@ -198,6 +214,14 @@ internal static class UiAccessibilityAudit
                     ((SolidColorBrush)main.Background).Color == SystemColors.WindowColor &&
                     ((SolidColorBrush)title.Foreground).Color == SystemColors.WindowTextColor,
                     $"application window={((SolidColorBrush)main.Background).Color}; text={((SolidColorBrush)title.Foreground).Color}; fixed light colors remain in use");
+                var resultTree = Control<TreeView>(main, "ResultTree");
+                var fileName = Descendants<TextBlock>(resultTree).SelectMany(t => t.Inlines.OfType<System.Windows.Documents.Run>())
+                    .First(r => r.Text.StartsWith("копия-"));
+                Color fileForeground = ((SolidColorBrush)fileName.Foreground).Color;
+                Color resultBackground = ((SolidColorBrush)resultTree.Background).Color;
+                double fileContrast = Contrast(fileForeground, resultBackground);
+                Check("High-contrast file name readability", fileContrast >= 4.5,
+                    $"foreground={fileForeground}; result background={resultBackground}; ratio={fileContrast:F4}:1");
                 Save(main, "actual-high-contrast.png");
             }
         }
@@ -228,7 +252,9 @@ internal static class UiAccessibilityAudit
             try
             {
                 string executable = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "System32", "Narrator.exe");
-                narrator = Process.Start(new ProcessStartInfo(executable) { UseShellExecute = false });
+                // Narrator uses UIAccess; ShellExecute invokes Windows' trusted
+                // accessibility launch path without requesting runas elevation.
+                narrator = Process.Start(new ProcessStartInfo(executable) { UseShellExecute = true });
                 await Task.Delay(2000);
                 bool running = narrator != null && !narrator.HasExited;
                 Record("Narrator startup smoke", running ? "PASS" : "UNVERIFIED",
