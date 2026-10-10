@@ -1,64 +1,126 @@
 <Window x:Class="FindCopy.App.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Настройки производительности" Width="560" SizeToContent="Height"
-        WindowStartupLocation="CenterOwner" ResizeMode="NoResize" ShowInTaskbar="False"
-        Background="{StaticResource WindowBg}" FontFamily="Segoe UI" FontSize="13" UseLayoutRounding="True">
-  <StackPanel Margin="18">
-    <TextBlock TextWrapping="Wrap" Foreground="{StaticResource TextMuted}" Margin="0,0,0,12"
-               Text="Значения по умолчанию взяты из ТЗ как стартовые. Уточните их по результатам FindCopy.Bench на своих дисках (build.bat bench). Алгоритм и точность поиска от них не зависят, только скорость."/>
-    <Border Style="{StaticResource Card}">
-      <Grid>
-        <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="*"/>
-          <ColumnDefinition Width="110"/>
-        </Grid.ColumnDefinitions>
-        <Grid.RowDefinitions>
-          <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
-          <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
-          <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
-          <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
-        <Grid.Resources>
-          <Style TargetType="TextBlock">
-            <Setter Property="VerticalAlignment" Value="Center"/>
-            <Setter Property="Margin" Value="0,4,12,4"/>
-          </Style>
-          <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
-            <Setter Property="Margin" Value="0,3"/>
-            <Setter Property="HorizontalContentAlignment" Value="Right"/>
-          </Style>
-        </Grid.Resources>
-
-        <TextBlock Grid.Row="0" Text="Порог «маленького» файла, КиБ (сразу полный хеш)"/>
-        <TextBox Grid.Row="0" Grid.Column="1" x:Name="ThresholdBox"/>
-        <TextBlock Grid.Row="1" Text="Размер быстрой выборки, КиБ"/>
-        <TextBox Grid.Row="1" Grid.Column="1" x:Name="SampleBox"/>
-        <TextBlock Grid.Row="2" Text="Буфер потокового чтения, КиБ"/>
-        <TextBox Grid.Row="2" Grid.Column="1" x:Name="BufferBox"/>
-
-        <TextBlock Grid.Row="3" Grid.ColumnSpan="2" Text="Одновременных полных чтений на один диск:" FontWeight="SemiBold" Margin="0,12,0,2"/>
-        <TextBlock Grid.Row="4" Text="HDD"/>
-        <TextBox Grid.Row="4" Grid.Column="1" x:Name="HddBox"/>
-        <TextBlock Grid.Row="5" Text="SATA SSD"/>
-        <TextBox Grid.Row="5" Grid.Column="1" x:Name="SsdBox"/>
-        <TextBlock Grid.Row="6" Text="NVMe (максимум)"/>
-        <TextBox Grid.Row="6" Grid.Column="1" x:Name="NvmeBox"/>
-        <CheckBox Grid.Row="7" Grid.ColumnSpan="2" x:Name="AutotuneBox" Content="Автоподбор для NVMe (от 2 до максимума, пока растёт скорость)"/>
-        <TextBlock Grid.Row="8" Text="Сетевой диск"/>
-        <TextBox Grid.Row="8" Grid.Column="1" x:Name="NetBox"/>
-        <TextBlock Grid.Row="9" Text="Неизвестный носитель"/>
-        <TextBox Grid.Row="9" Grid.Column="1" x:Name="UnknownBox"/>
-        <CheckBox Grid.Row="10" Grid.ColumnSpan="2" x:Name="FastEnumBox" Margin="0,10,0,0"
-                  Content="Быстрый обход папок (FileIdExtdDirectoryInfo, при неудаче — обычный)"/>
-      </Grid>
-    </Border>
-    <Grid Margin="0,14,0,0">
-      <Button Content="По умолчанию" HorizontalAlignment="Left" Click="OnDefaults" MinWidth="120"/>
-      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-        <Button Content="Отмена" IsCancel="True" MinWidth="96" Margin="0,0,8,0"/>
-        <Button Content="Сохранить" Style="{StaticResource AccentButton}" IsDefault="True" Click="OnOk" MinWidth="110"/>
+        Title="Настройки производительности" Width="560" Height="640" MinWidth="420" MinHeight="300"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="{DynamicResource WindowBg}" Foreground="{DynamicResource TextMain}"
+        FontFamily="Segoe UI" FontSize="13" UseLayoutRounding="True">
+  <Grid Margin="18">
+    <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <ScrollViewer x:Name="SettingsScroll" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel>
+        <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource TextMuted}" Margin="0,0,0,12"
+                   Text="Эти параметры влияют на скорость и нагрузку на диски. Точность поиска от них не зависит. При сомнениях используйте значения по умолчанию."/>
+        <Border Style="{StaticResource Card}">
+          <Grid>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="110"/></Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <StackPanel Grid.Row="0" Margin="0,6,12,6" VerticalAlignment="Center">
+              <Label x:Name="ThresholdLabel" Target="{Binding ElementName=ThresholdBox}" Content="Порог «маленького» файла, КиБ" Padding="0">
+                <Label.ContentTemplate><DataTemplate><TextBlock Text="{Binding}" TextWrapping="Wrap"/></DataTemplate></Label.ContentTemplate>
+              </Label>
+              <TextBlock Text="64–65536; сразу полный хеш" TextWrapping="Wrap" Foreground="{DynamicResource TextMuted}" FontSize="11.5"/>
+            </StackPanel>
+            <StackPanel Grid.Row="0" Grid.Column="1" Margin="0,3">
+              <TextBox x:Name="ThresholdBox" AutomationProperties.LabeledBy="{Binding ElementName=ThresholdLabel}" HorizontalContentAlignment="Right"/>
+              <TextBlock x:Name="ThresholdError" TextWrapping="Wrap" Foreground="{DynamicResource DangerText}" AutomationProperties.LiveSetting="Polite"/>
+            </StackPanel>
+            <StackPanel Grid.Row="1" Margin="0,6,12,6" VerticalAlignment="Center">
+              <Label x:Name="SampleLabel" Target="{Binding ElementName=SampleBox}" Content="Размер быстрой выборки, КиБ" Padding="0">
+                <Label.ContentTemplate><DataTemplate><TextBlock Text="{Binding}" TextWrapping="Wrap"/></DataTemplate></Label.ContentTemplate>
+              </Label>
+              <TextBlock Text="4–1024; не больше порога файла" TextWrapping="Wrap" Foreground="{DynamicResource TextMuted}" FontSize="11.5"/>
+            </StackPanel>
+            <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,3">
+              <TextBox x:Name="SampleBox" AutomationProperties.LabeledBy="{Binding ElementName=SampleLabel}" HorizontalContentAlignment="Right"/>
+              <TextBlock x:Name="SampleError" TextWrapping="Wrap" Foreground="{DynamicResource DangerText}" AutomationProperties.LiveSetting="Polite"/>
+            </StackPanel>
+            <StackPanel Grid.Row="2" Margin="0,6,12,6" VerticalAlignment="Center">
+              <Label x:Name="BufferLabel" Target="{Binding ElementName=BufferBox}" Content="Буфер потокового чтения, КиБ" Padding="0">
+                <Label.ContentTemplate><DataTemplate><TextBlock Text="{Binding}" TextWrapping="Wrap"/></DataTemplate></Label.ContentTemplate>
+              </Label>
+              <TextBlock Text="64–16384" TextWrapping="Wrap" Foreground="{DynamicResource TextMuted}" FontSize="11.5"/>
+            </StackPanel>
+            <StackPanel Grid.Row="2" Grid.Column="1" Margin="0,3">
+              <TextBox x:Name="BufferBox" AutomationProperties.LabeledBy="{Binding ElementName=BufferLabel}" HorizontalContentAlignment="Right"/>
+              <TextBlock x:Name="BufferError" TextWrapping="Wrap" Foreground="{DynamicResource DangerText}" AutomationProperties.LiveSetting="Polite"/>
+            </StackPanel>
+            <StackPanel Grid.Row="4" Margin="0,6,12,6" VerticalAlignment="Center">
+              <Label x:Name="HddLabel" Target="{Binding ElementName=HddBox}" Content="HDD" Padding="0">
+                <Label.ContentTemplate><DataTemplate><TextBlock Text="{Binding}" TextWrapping="Wrap"/></DataTemplate></Label.ContentTemplate>
+              </Label>
+              <TextBlock Text="1–16 одновременных чтений" TextWrapping="Wrap" Foreground="{DynamicResource TextMuted}" FontSize="11.5"/>
+            </StackPanel>
+            <StackPanel Grid.Row="4" Grid.Column="1" Margin="0,3">
+              <TextBox x:Name="HddBox" AutomationProperties.LabeledBy="{Binding ElementName=HddLabel}" HorizontalContentAlignment="Right"/>
+              <TextBlock x:Name="HddError" TextWrapping="Wrap" Foreground="{DynamicResource DangerText}" AutomationProperties.LiveSetting="Polite"/>
+            </StackPanel>
+            <StackPanel Grid.Row="5" Margin="0,6,12,6" VerticalAlignment="Center">
+              <Label x:Name="SsdLabel" Target="{Binding ElementName=SsdBox}" Content="SATA SSD" Padding="0">
+                <Label.ContentTemplate><DataTemplate><TextBlock Text="{Binding}" TextWrapping="Wrap"/></DataTemplate></Label.ContentTemplate>
+              </Label>
+              <TextBlock Text="1–16 одновременных чтений" TextWrapping="Wrap" Foreground="{DynamicResource TextMuted}" FontSize="11.5"/>
+            </StackPanel>
+            <StackPanel Grid.Row="5" Grid.Column="1" Margin="0,3">
+              <TextBox x:Name="SsdBox" AutomationProperties.LabeledBy="{Binding ElementName=SsdLabel}" HorizontalContentAlignment="Right"/>
+              <TextBlock x:Name="SsdError" TextWrapping="Wrap" Foreground="{DynamicResource DangerText}" AutomationProperties.LiveSetting="Polite"/>
+            </StackPanel>
+            <StackPanel Grid.Row="6" Margin="0,6,12,6" VerticalAlignment="Center">
+              <Label x:Name="NvmeLabel" Target="{Binding ElementName=NvmeBox}" Content="NVMe (максимум)" Padding="0">
+                <Label.ContentTemplate><DataTemplate><TextBlock Text="{Binding}" TextWrapping="Wrap"/></DataTemplate></Label.ContentTemplate>
+              </Label>
+              <TextBlock Text="1–16 одновременных чтений" TextWrapping="Wrap" Foreground="{DynamicResource TextMuted}" FontSize="11.5"/>
+            </StackPanel>
+            <StackPanel Grid.Row="6" Grid.Column="1" Margin="0,3">
+              <TextBox x:Name="NvmeBox" AutomationProperties.LabeledBy="{Binding ElementName=NvmeLabel}" HorizontalContentAlignment="Right"/>
+              <TextBlock x:Name="NvmeError" TextWrapping="Wrap" Foreground="{DynamicResource DangerText}" AutomationProperties.LiveSetting="Polite"/>
+            </StackPanel>
+            <StackPanel Grid.Row="8" Margin="0,6,12,6" VerticalAlignment="Center">
+              <Label x:Name="NetLabel" Target="{Binding ElementName=NetBox}" Content="Сетевой диск" Padding="0">
+                <Label.ContentTemplate><DataTemplate><TextBlock Text="{Binding}" TextWrapping="Wrap"/></DataTemplate></Label.ContentTemplate>
+              </Label>
+              <TextBlock Text="1–16 одновременных чтений" TextWrapping="Wrap" Foreground="{DynamicResource TextMuted}" FontSize="11.5"/>
+            </StackPanel>
+            <StackPanel Grid.Row="8" Grid.Column="1" Margin="0,3">
+              <TextBox x:Name="NetBox" AutomationProperties.LabeledBy="{Binding ElementName=NetLabel}" HorizontalContentAlignment="Right"/>
+              <TextBlock x:Name="NetError" TextWrapping="Wrap" Foreground="{DynamicResource DangerText}" AutomationProperties.LiveSetting="Polite"/>
+            </StackPanel>
+            <StackPanel Grid.Row="9" Margin="0,6,12,6" VerticalAlignment="Center">
+              <Label x:Name="UnknownLabel" Target="{Binding ElementName=UnknownBox}" Content="Неизвестный носитель" Padding="0">
+                <Label.ContentTemplate><DataTemplate><TextBlock Text="{Binding}" TextWrapping="Wrap"/></DataTemplate></Label.ContentTemplate>
+              </Label>
+              <TextBlock Text="1–16 одновременных чтений" TextWrapping="Wrap" Foreground="{DynamicResource TextMuted}" FontSize="11.5"/>
+            </StackPanel>
+            <StackPanel Grid.Row="9" Grid.Column="1" Margin="0,3">
+              <TextBox x:Name="UnknownBox" AutomationProperties.LabeledBy="{Binding ElementName=UnknownLabel}" HorizontalContentAlignment="Right"/>
+              <TextBlock x:Name="UnknownError" TextWrapping="Wrap" Foreground="{DynamicResource DangerText}" AutomationProperties.LiveSetting="Polite"/>
+            </StackPanel>
+            <TextBlock Grid.Row="3" Grid.ColumnSpan="2" Text="Одновременных полных чтений на один диск:" FontWeight="SemiBold" Margin="0,12,0,2" TextWrapping="Wrap"/>
+            <CheckBox Grid.Row="7" Grid.ColumnSpan="2" x:Name="AutotuneBox" Content="Автоподбор для NVMe (от 2 до максимума, пока растёт скорость)"/>
+            <CheckBox Grid.Row="10" Grid.ColumnSpan="2" x:Name="FastEnumBox" Margin="0,10,0,0" Content="Быстрый обход папок с автоматическим переходом к обычному при неудаче"/>
+          </Grid>
+        </Border>
       </StackPanel>
-    </Grid>
-  </StackPanel>
+    </ScrollViewer>
+    <StackPanel Grid.Row="1" Margin="0,14,0,0">
+      <TextBlock x:Name="SaveError" TextWrapping="Wrap" Foreground="{DynamicResource DangerText}" AutomationProperties.LiveSetting="Polite" Margin="0,0,0,6"/>
+      <WrapPanel HorizontalAlignment="Right">
+        <Button Content="По умолчанию" Click="OnDefaults" MinWidth="120" Margin="0,0,8,4"/>
+        <Button Content="Отмена" IsCancel="True" MinWidth="96" Margin="0,0,8,4"/>
+        <Button x:Name="SaveButton" Content="Сохранить" Style="{StaticResource AccentButton}" IsDefault="True" Click="OnOk" MinWidth="110" Margin="0,0,0,4"/>
+      </WrapPanel>
+    </StackPanel>
+  </Grid>
 </Window>

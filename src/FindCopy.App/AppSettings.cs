@@ -37,8 +37,14 @@ public sealed class AppSettings
 
     public void Save() => Save(FilePath);
 
-    internal void Save(string path)
+    internal void Save(string path) => TrySave(path, out _);
+
+    /// <summary>Atomically persist settings and expose failure to interactive callers.</summary>
+    public bool TrySave(out string? error) => TrySave(FilePath, out error);
+
+    internal bool TrySave(string path, out string? error)
     {
+        error = null;
         string? temporary = null;
         try
         {
@@ -51,8 +57,13 @@ public sealed class AppSettings
                 stream.Flush(flushToDisk: true);
             }
             File.Move(temporary, path, overwrite: true);
+            return true;
         }
-        catch { }
+        catch (Exception ex)
+        {
+            error = "Не удалось сохранить настройки. Проверьте доступ к папке настроек и повторите попытку. " + ex.Message;
+            return false;
+        }
         finally
         {
             if (temporary != null)

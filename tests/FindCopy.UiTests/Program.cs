@@ -181,11 +181,12 @@ internal static class Program
                 using (var reader = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
                 {
                     settings.ReadersHdd = 6;
-                    settings.Save(path);
+                    Require(!settings.TrySave(path, out string? error) && !string.IsNullOrWhiteSpace(error),
+                        "failed save was reported as success");
                     Require(File.ReadAllText(path) == previous, "failed replacement modified the previous settings");
                 }
                 Require(!Directory.EnumerateFiles(directory, "*.tmp").Any(), "failed settings replacement left a temporary file");
-                settings.Save(path);
+                Require(settings.TrySave(path, out string? savedError) && savedError == null, "retry did not report success");
                 Require(AppSettings.Load(path).ReadersHdd == 6 && !Directory.EnumerateFiles(directory, "*.tmp").Any(),
                     "settings could not be saved after the reader closed");
                 return Task.CompletedTask;
@@ -213,6 +214,98 @@ internal static class Program
                     StreamBufferKiB = int.MaxValue, ReadersHdd = -1, ReadersSsd = 0, ReadersNvme = 1000, ReadersNetwork = 0 };
                 settings.Sanitized().ToTuning().Validate();
                 var dialog = new SettingsWindow(settings); dialog.Show(); dialog.Close();
+                return Task.CompletedTask;
+            });
+            await Test("UI20 settings reject every numeric range violation without silently changing values", () =>
+            {
+                var current = new AppSettings(); int saves = 0;
+                var dialog = new SettingsWindow(current) { Owner = window, SaveSettings = _ => { saves++; return null; } };
+                dialog.Show();
+                try
+                {
+                    var ranges = new[] { ("Threshold", 64, 65536), ("Sample", 4, 1024), ("Buffer", 64, 16384),
+                        ("Hdd", 1, 16), ("Ssd", 1, 16), ("Nvme", 1, 16), ("Net", 1, 16), ("Unknown", 1, 16) };
+                    foreach (var (name, minimum, maximum) in ranges)
+                    {
+                        var box = Control<TextBox>(dialog, name + "Box"); string original = box.Text;
+                        foreach (string invalid in new[] { (minimum - 1).ToString(), (maximum + 1).ToString(), "abc", "2147483648" })
+                        {
+                            box.Text = invalid;
+                            Require(!dialog.TryApplySettings() && ReferenceEquals(dialog.Settings, current) && saves == 0,
+                                "invalid " + name + " changed settings or invoked persistence");
+                            Require(box.Text == invalid && Control<TextBlock>(dialog, name + "Error").Text.Length > 0,
+                                "invalid input was replaced or its inline error was missing");
+                        }
+                        box.Text = original;
+                    }
+                    Control<TextBox>(dialog, "ThresholdBox").Text = "64";
+                    Control<TextBox>(dialog, "SampleBox").Text = "65";
+                    Require(!dialog.TryApplySettings() && saves == 0 && Control<TextBlock>(dialog, "SampleError").Text.Contains("порог"),
+                        "sample exceeding the small-file threshold was silently clamped");
+                    Control<TextBox>(dialog, "SampleBox").Text = "4";
+                    Control<TextBox>(dialog, "BufferBox").Text = "64";
+                    Require(dialog.TryApplySettings() && saves == 1 && dialog.Settings.SampleSizeKiB == 4, "lower boundary rejected");
+                    Control<TextBox>(dialog, "ThresholdBox").Text = "65536";
+                    Control<TextBox>(dialog, "SampleBox").Text = "1024";
+                    Control<TextBox>(dialog, "BufferBox").Text = "16384";
+                    foreach (var name in new[] { "Hdd", "Ssd", "Nvme", "Net", "Unknown" }) Control<TextBox>(dialog, name + "Box").Text = "16";
+                    Require(dialog.TryApplySettings() && saves == 2, "upper boundary rejected");
+                    dialog.Settings.ToTuning().Validate();
+                }
+                finally { dialog.Close(); }
+                return Task.CompletedTask;
+            });
+            await Test("UI21 failed atomic save keeps the modal dialog and input until a successful retry", () =>
+            {
+                string path = Path.Combine(root, "dialog-settings", "settings.json");
+                var current = new AppSettings { ReadersHdd = 3 };
+                Require(current.TrySave(path, out _), "fixture save failed");
+                string previous = File.ReadAllText(path);
+                var reader = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                var dialog = new SettingsWindow(current) { Owner = window,
+                    SaveSettings = candidate => candidate.TrySave(path, out var error) ? null : error };
+                Exception? failure = null;
+                dialog.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    try
+                    {
+                        Control<TextBox>(dialog, "HddBox").Text = "6";
+                        Click(dialog, "SaveButton");
+                        Require(dialog.IsVisible && ReferenceEquals(dialog.Settings, current) && current.ReadersHdd == 3 &&
+                            Control<TextBox>(dialog, "HddBox").Text == "6" && Control<TextBlock>(dialog, "SaveError").Text.Length > 0,
+                            "failed save closed the modal dialog, hid the error or changed current settings");
+                        Require(File.ReadAllText(path) == previous && !Directory.EnumerateFiles(Path.GetDirectoryName(path)!, "*.tmp").Any(),
+                            "failed modal save damaged persisted settings or left temporary files");
+                        reader.Dispose();
+                        Click(dialog, "SaveButton");
+                        Require(!dialog.IsVisible && dialog.Settings.ReadersHdd == 6, "successful retry did not accept settings and close");
+                    }
+                    catch (Exception ex) { failure = ex; dialog.Close(); }
+                    finally { reader.Dispose(); }
+                }));
+                bool? result = dialog.ShowDialog();
+                if (failure != null) throw failure;
+                Require(result == true && AppSettings.Load(path).ReadersHdd == 6, "modal success was not persisted");
+                return Task.CompletedTask;
+            });
+            await Test("UI22 small settings window retains its save action and scrollable fields", () =>
+            {
+                var dialog = new SettingsWindow(new AppSettings()) { Owner = window, Width = 420, Height = 300 };
+                dialog.Show();
+                try
+                {
+                    dialog.UpdateLayout();
+                    var button = Control<Button>(dialog, "SaveButton");
+                    var bounds = button.TransformToAncestor(dialog).TransformBounds(new Rect(button.RenderSize));
+                    Require(bounds.Bottom <= dialog.ActualHeight && bounds.Right <= dialog.ActualWidth && button.ActualHeight >= 28,
+                        "save action outside the small settings window");
+                    var scroll = Control<ScrollViewer>(dialog, "SettingsScroll");
+                    Require(scroll.ScrollableHeight > 0, "settings fields lost their scrollable viewport");
+                    Control<TextBox>(dialog, "UnknownBox").BringIntoView();
+                    dialog.UpdateLayout();
+                    Screenshot(dialog, "small-settings.png");
+                }
+                finally { dialog.Close(); }
                 return Task.CompletedTask;
             });
             await Test("UI10 declining native cloud consent keeps online-only reads disabled", () =>

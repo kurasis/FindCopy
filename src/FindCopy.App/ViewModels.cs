@@ -96,6 +96,7 @@ public sealed class GroupVM : INotifyPropertyChanged
     public string Number { get; }
     public string Title { get; }
     public string Reclaim { get; }
+    public bool IsExact => Group.Verification == VerificationState.ExactMatch;
     public string Badge { get; }
     public Brush BadgeBackground { get; }
     public Brush BadgeForeground { get; }

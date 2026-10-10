@@ -46,10 +46,10 @@ public partial class RecoveryWindow : Window
         {
             var entries = _service.Journal.Load(out var errors);
             HistoryGrid.ItemsSource = entries.Select(e => new Row(e)).ToList();
-            StatusText.Text = errors.Count > 0 ? $"Не удалось прочитать записей истории: {errors.Count}. Файлы истории сохранены."
-                : entries.Count == 0 ? "История удалений пуста." : $"Записей истории: {entries.Count}.";
+            AccessibilityStatus.Set(StatusText, errors.Count > 0 ? $"Не удалось прочитать записей истории: {errors.Count}. Файлы истории сохранены."
+                : entries.Count == 0 ? "История удалений пуста." : $"Записей истории: {entries.Count}.");
         }
-        catch (Exception ex) { StatusText.Text = "История недоступна: " + ex.Message; }
+        catch (Exception ex) { AccessibilityStatus.Set(StatusText, "История недоступна: " + ex.Message); }
         UpdateButtons();
     }
 
@@ -61,20 +61,20 @@ public partial class RecoveryWindow : Window
         bool confirm = ConfirmationSink?.Invoke(message) ?? MessageBox.Show(this, message,
             "Подтвердите восстановление", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) == MessageBoxResult.Yes;
         if (!confirm) return;
-        _busy = true; UpdateButtons(); StatusText.Text = "Восстановление…";
+        _busy = true; UpdateButtons(); AccessibilityStatus.Set(StatusText, "Восстановление…");
         try
         {
             var result = await Task.Run(() => _service.Restore(row.Entry.Id));
             if (result.Restored) FilesRestored++;
             Refresh();
-            StatusText.Text = result.Restored ? "Файл восстановлен: " + result.Path : "Не восстановлен: " + result.Reason;
+            AccessibilityStatus.Set(StatusText, result.Restored ? "Файл восстановлен: " + result.Path : "Не восстановлен: " + result.Reason);
             if (result.Reason != null)
             {
                 if (NotificationSink != null) NotificationSink(result.Reason, true);
                 else MessageBox.Show(this, result.Reason, "Восстановление", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
-        catch (Exception ex) { StatusText.Text = "Восстановление не завершено: " + ex.Message; }
+        catch (Exception ex) { AccessibilityStatus.Set(StatusText, "Восстановление не завершено: " + ex.Message); }
         finally { _busy = false; UpdateButtons(); }
     }
 }
