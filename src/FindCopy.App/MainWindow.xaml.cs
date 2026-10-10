@@ -23,6 +23,8 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        // Preserve the minimum-size result viewport; larger windows can expose more options.
+        SizeChanged += (_, _) => SearchCard.MaxHeight = Math.Clamp(ActualHeight - 390, 170, 340);
         _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
         _timer.Tick += (_, _) => RefreshProgress();
         FolderBox.Text = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
@@ -119,12 +121,12 @@ public partial class MainWindow : Window
         }
         catch (OperationCanceledException)
         {
-            PhaseText.Text = "Поиск отменён";
-            SummaryText.Text = "Поиск остановлен пользователем. Результаты неполные и не показываются.";
+            AccessibilityStatus.Set(PhaseText, "Поиск отменён");
+            AccessibilityStatus.Set(SummaryText, "Поиск остановлен пользователем. Результаты неполные и не показываются.");
         }
         catch (Exception ex)
         {
-            PhaseText.Text = "Ошибка";
+            AccessibilityStatus.Set(PhaseText, "Ошибка");
             MessageBox.Show(this, "Поиск прерван из-за ошибки:\n\n" + ex.Message, "FindCopy", MessageBoxButton.OK, MessageBoxImage.Error);
         }
         finally
@@ -142,7 +144,7 @@ public partial class MainWindow : Window
     {
         if (_cts == null) return;
         _cts.Cancel();
-        PhaseText.Text = "Отмена…";
+        AccessibilityStatus.Set(PhaseText, "Отмена…");
         CancelButton.IsEnabled = false;
     }
 
@@ -172,7 +174,7 @@ public partial class MainWindow : Window
         ZeroList.ItemsSource = null;
         IssuesGrid.ItemsSource = null;
         StatsBox.Text = "";
-        SummaryText.Text = "";
+        AccessibilityStatus.Set(SummaryText, "");
         DupTab.Header = "Дубликаты";
         ZeroTab.Header = "Пустые файлы";
         IssuesTab.Header = "Пропущено и ошибки";
@@ -186,7 +188,7 @@ public partial class MainWindow : Window
         var c = _controller?.Counters;
         if (c == null) return;
         ElapsedText.Text = _clock.Elapsed.ToString(@"hh\:mm\:ss");
-        if (!final && _cts != null && !_cts.IsCancellationRequested) PhaseText.Text = c.Phase + "…";
+        if (!final && _cts != null && !_cts.IsCancellationRequested) AccessibilityStatus.Set(PhaseText, c.Phase + "…");
 
         long total = Interlocked.Read(ref c.StageTotal), done = Interlocked.Read(ref c.StageDone);
         if (!final)
@@ -220,7 +222,7 @@ public partial class MainWindow : Window
         long issueTotal = r.IssueCounts.Values.Sum();
         IssuesTab.Header = $"Пропущено и ошибки ({Fmt.Num(issueTotal)})";
 
-        PhaseText.Text = "Поиск завершён";
+        AccessibilityStatus.Set(PhaseText, "Поиск завершён");
         StatsBox.Text = BuildStats(r);
 
         long redundant = r.Groups.Sum(g => (long)g.UniquePhysicalFileCount - 1);
@@ -230,16 +232,15 @@ public partial class MainWindow : Window
                 ? "Дубликаты не найдены среди успешно проверенных файлов. Часть файлов проверить не удалось — см. вкладку «Пропущено и ошибки»."
                 : "Дубликаты не найдены.";
             EmptyHint.Text = msg;
-            SummaryText.Text = msg;
+            AccessibilityStatus.Set(SummaryText, msg);
             EmptyHint.Visibility = Visibility.Visible;
         }
         else
         {
             EmptyHint.Visibility = Visibility.Collapsed;
-            SummaryText.Text =
-                $"Найдено групп: {Fmt.Num(r.Groups.Count)}, лишних копий: {Fmt.Num(redundant)}. " +
+            AccessibilityStatus.Set(SummaryText, $"Найдено групп: {Fmt.Num(r.Groups.Count)}, лишних копий: {Fmt.Num(redundant)}. " +
                 $"Можно освободить примерно {Fmt.Size(r.TotalReclaimableDisk)}." +
-                (r.HasUncheckedFiles ? "  Часть файлов не проверена — см. «Пропущено и ошибки»." : "");
+                (r.HasUncheckedFiles ? "  Часть файлов не проверена — см. «Пропущено и ошибки»." : ""));
         }
     }
 
@@ -305,11 +306,14 @@ public partial class MainWindow : Window
 
     private void OnSettings(object sender, RoutedEventArgs e)
     {
-        var dlg = new SettingsWindow(_settings) { Owner = this };
+        var dlg = new SettingsWindow(_settings)
+        {
+            Owner = this,
+            SaveSettings = candidate => candidate.TrySave(out string? error) ? null : error,
+        };
         if (dlg.ShowDialog() == true)
         {
             _settings = dlg.Settings;
-            _settings.Save();
         }
     }
 
@@ -454,7 +458,7 @@ public partial class MainWindow : Window
         if (_cts != null) return;
         SetBusy(true);
         _cts = new CancellationTokenSource();
-        PhaseText.Text = "Удаление…";
+        AccessibilityStatus.Set(PhaseText, "Удаление…");
         Progress.IsIndeterminate = false;
         Progress.Value = 0;
         try
@@ -464,13 +468,13 @@ public partial class MainWindow : Window
         }
         catch (OperationCanceledException)
         {
-            PhaseText.Text = "Удаление остановлено";
+            AccessibilityStatus.Set(PhaseText, "Удаление остановлено");
             ShowNotification("Удаление остановлено. Уже удалённые файлы удалены, остальные не тронуты. Запустите поиск заново, чтобы обновить список.",
                 "FindCopy", false);
         }
         catch (Exception ex)
         {
-            PhaseText.Text = "Ошибка удаления";
+            AccessibilityStatus.Set(PhaseText, "Ошибка удаления");
             ShowNotification("Удаление прервано из-за ошибки:\n\n" + ex.Message +
                 "\n\nЗапустите поиск заново, чтобы обновить список уже удалённых файлов.", "FindCopy", true);
         }
@@ -524,14 +528,14 @@ public partial class MainWindow : Window
         }
 
         long freed = outcomes.Sum(o => o.FreedBytes);
-        PhaseText.Text = "Удаление завершено";
+        AccessibilityStatus.Set(PhaseText, "Удаление завершено");
         CountersText.Text = "";
         string summary = $"Удалено файлов: {Fmt.Num(deleted.Count)}, освобождено примерно {Fmt.Size(freed)}.";
         if (failed.Count > 0)
             summary += $"\n\nНе удалено: {Fmt.Num(failed.Count)}. Причины — на вкладке «Пропущено и ошибки».";
         if (notes.Count > 0)
             summary += $"\n\nФайлов с замечаниями: {Fmt.Num(notes.Count)}. Пути восстановления и оставленные ссылки — на вкладке «Пропущено и ошибки».";
-        SummaryText.Text = summary.Replace("\n\n", " ");
+        AccessibilityStatus.Set(SummaryText, summary.Replace("\n\n", " "));
         ShowNotification(summary, "Удаление", failed.Count > 0 || notes.Count > 0);
     }
 
@@ -552,8 +556,8 @@ public partial class MainWindow : Window
         if (window.FilesRestored > 0)
         {
             ClearResults();
-            PhaseText.Text = "Файлы восстановлены";
-            SummaryText.Text = "Запустите поиск заново, чтобы обновить результаты после восстановления.";
+            AccessibilityStatus.Set(PhaseText, "Файлы восстановлены");
+            AccessibilityStatus.Set(SummaryText, "Запустите поиск заново, чтобы обновить результаты после восстановления.");
         }
     }
 

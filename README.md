@@ -18,6 +18,9 @@ The [maintenance audit](docs/code-audit-2026-10-07.md) records resource/error-pa
 fixes, regression coverage, and remaining verification limits.
 The [security audit](docs/security-audit-2026-10-07.md) records end-user risk
 findings, approved safety fixes, official dependency checks, and residual risks.
+The [UI audit corrections](docs/ui-accessibility-fixes-2026-10-10.md) record
+accessibility and settings fixes, Windows 11 runtime evidence, and remaining
+interactive keyboard, screen-reader, and monitor-scaling checks.
 
 ## Build and test
 

@@ -6,10 +6,18 @@ namespace FindCopy.App;
 public partial class SettingsWindow : Window
 {
     public AppSettings Settings { get; private set; }
+    internal Func<AppSettings, string?>? SaveSettings { get; set; }
 
     public SettingsWindow(AppSettings current)
     {
         InitializeComponent();
+        var area = SystemParameters.WorkArea;
+        MaxWidth = area.Width;
+        MaxHeight = area.Height;
+        MinWidth = Math.Min(MinWidth, MaxWidth);
+        MinHeight = Math.Min(MinHeight, MaxHeight);
+        Width = Math.Min(Width, MaxWidth);
+        Height = Math.Min(Height, MaxHeight);
         Settings = current;
         Show(current);
     }
@@ -28,12 +36,17 @@ public partial class SettingsWindow : Window
         FastEnumBox.IsChecked = s.FastEnumeration;
     }
 
-    private void OnDefaults(object sender, RoutedEventArgs e) => Show(new AppSettings());
-
-    private static bool Read(TextBox box, string what, out int value)
+    private void OnDefaults(object sender, RoutedEventArgs e)
     {
-        if (int.TryParse(box.Text.Trim(), out value) && value > 0) return true;
-        MessageBox.Show($"Введите положительное целое число: {what}.", "Настройки", MessageBoxButton.OK, MessageBoxImage.Warning);
+        ClearErrors();
+        Show(new AppSettings());
+    }
+
+    private static bool Read(TextBox box, TextBlock error, int minimum, int maximum, out int value)
+    {
+        if (int.TryParse(box.Text.Trim(), out value) && value >= minimum && value <= maximum) return true;
+        AccessibilityStatus.Set(error, $"Введите целое число от {minimum} до {maximum}.");
+        box.BringIntoView();
         box.Focus();
         box.SelectAll();
         return false;
@@ -41,16 +54,43 @@ public partial class SettingsWindow : Window
 
     private void OnOk(object sender, RoutedEventArgs e)
     {
-        if (!Read(ThresholdBox, "порог маленького файла", out int th) || !Read(SampleBox, "размер выборки", out int sample) ||
-            !Read(BufferBox, "буфер", out int buffer) || !Read(HddBox, "HDD", out int hdd) || !Read(SsdBox, "SSD", out int ssd) ||
-            !Read(NvmeBox, "NVMe", out int nvme) || !Read(NetBox, "сетевой диск", out int net) || !Read(UnknownBox, "неизвестный носитель", out int unk))
-            return;
-        Settings = new AppSettings
+        if (TryApplySettings()) DialogResult = true;
+    }
+
+    private void ClearErrors()
+    {
+        foreach (var error in new[] { ThresholdError, SampleError, BufferError, HddError, SsdError, NvmeError, NetError, UnknownError, SaveError })
+            error.Text = "";
+    }
+
+    internal bool TryApplySettings()
+    {
+        ClearErrors();
+        if (!Read(ThresholdBox, ThresholdError, 64, 65536, out int th) || !Read(SampleBox, SampleError, 4, 1024, out int sample) ||
+            !Read(BufferBox, BufferError, 64, 16384, out int buffer) || !Read(HddBox, HddError, 1, 16, out int hdd) ||
+            !Read(SsdBox, SsdError, 1, 16, out int ssd) || !Read(NvmeBox, NvmeError, 1, 16, out int nvme) ||
+            !Read(NetBox, NetError, 1, 16, out int net) || !Read(UnknownBox, UnknownError, 1, 16, out int unk)) return false;
+        if (sample > th)
+        {
+            AccessibilityStatus.Set(SampleError, "Выборка не должна превышать порог маленького файла.");
+            SampleBox.BringIntoView();
+            SampleBox.Focus();
+            SampleBox.SelectAll();
+            return false;
+        }
+        var candidate = new AppSettings
         {
             SmallFileThresholdKiB = th, SampleSizeKiB = sample, StreamBufferKiB = buffer,
             ReadersHdd = hdd, ReadersSsd = ssd, ReadersNvme = nvme, NvmeAutotune = AutotuneBox.IsChecked == true,
             ReadersNetwork = net, ReadersUnknown = unk, FastEnumeration = FastEnumBox.IsChecked == true,
-        }.Sanitized();
-        DialogResult = true;
+        };
+        string? saveError = SaveSettings?.Invoke(candidate);
+        if (saveError != null)
+        {
+            AccessibilityStatus.Set(SaveError, saveError);
+            return false;
+        }
+        Settings = candidate;
+        return true;
     }
 }

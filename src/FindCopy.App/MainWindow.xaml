@@ -5,7 +5,7 @@
         Title="FindCopy — поиск дубликатов файлов"
         Width="1100" Height="760" MinWidth="760" MinHeight="560"
         WindowStartupLocation="CenterScreen"
-        Background="{StaticResource WindowBg}"
+        Background="{DynamicResource WindowBg}" Foreground="{DynamicResource TextMain}"
         FontFamily="Segoe UI" FontSize="13"
         TextOptions.TextFormattingMode="Display"
         UseLayoutRounding="True"
@@ -14,23 +14,81 @@
   <Window.Resources>
     <BooleanToVisibilityConverter x:Key="BoolToVis"/>
 
+    <Style x:Key="ResultText" TargetType="TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource TextMain}"/>
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=TreeViewItem}}" Value="True">
+          <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+        </DataTrigger>
+        <MultiDataTrigger>
+          <MultiDataTrigger.Conditions>
+            <Condition Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=TreeViewItem}}" Value="True"/>
+            <Condition Binding="{Binding IsSelectionActive, RelativeSource={RelativeSource AncestorType=TreeViewItem}}" Value="False"/>
+          </MultiDataTrigger.Conditions>
+          <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}}"/>
+        </MultiDataTrigger>
+      </Style.Triggers>
+    </Style>
+    <Style x:Key="ResultMutedText" TargetType="TextBlock" BasedOn="{StaticResource ResultText}">
+      <Setter Property="Foreground" Value="{DynamicResource TextMuted}"/>
+    </Style>
+    <Style x:Key="ResultWarningText" TargetType="TextBlock" BasedOn="{StaticResource ResultText}">
+      <Setter Property="Foreground" Value="{DynamicResource Warn}"/>
+    </Style>
+    <Style x:Key="ResultSelectionText" TargetType="TextBlock" BasedOn="{StaticResource ResultText}">
+      <Setter Property="Foreground" Value="{DynamicResource DangerText}"/>
+    </Style>
+    <Style x:Key="ResultDirectoryRun" TargetType="Run">
+      <Setter Property="Foreground" Value="{DynamicResource TextMuted}"/>
+      <Style.Triggers>
+        <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=TreeViewItem}}" Value="True">
+          <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.HighlightTextBrushKey}}"/>
+        </DataTrigger>
+        <MultiDataTrigger>
+          <MultiDataTrigger.Conditions>
+            <Condition Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=TreeViewItem}}" Value="True"/>
+            <Condition Binding="{Binding IsSelectionActive, RelativeSource={RelativeSource AncestorType=TreeViewItem}}" Value="False"/>
+          </MultiDataTrigger.Conditions>
+          <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}}"/>
+        </MultiDataTrigger>
+      </Style.Triggers>
+    </Style>
+
+
     <HierarchicalDataTemplate DataType="{x:Type local:GroupVM}" ItemsSource="{Binding Files}">
       <Grid Margin="0,6,0,4">
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="Auto"/>
           <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
-        <Border Background="#EEF2FF" CornerRadius="4" Padding="7,2" Margin="0,0,10,0" VerticalAlignment="Center">
-          <TextBlock Text="{Binding Number}" Foreground="{StaticResource Accent}" FontWeight="SemiBold"/>
+        <Border Background="{DynamicResource NumberBg}" CornerRadius="4" Padding="7,2" Margin="0,0,10,0" VerticalAlignment="Center">
+          <TextBlock Text="{Binding Number}" Foreground="{DynamicResource HashBadgeFg}" FontWeight="SemiBold"/>
         </Border>
         <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-          <TextBlock Text="{Binding Title}" FontWeight="SemiBold" Foreground="{StaticResource TextMain}"/>
-          <TextBlock Text="  ·  " Foreground="{StaticResource TextMuted}"/>
-          <TextBlock Text="{Binding Reclaim}" Foreground="{StaticResource TextMuted}"/>
-          <Border CornerRadius="4" Padding="7,1" Margin="12,0,0,0" Background="{Binding BadgeBackground}">
-            <TextBlock Text="{Binding Badge}" FontSize="11.5" Foreground="{Binding BadgeForeground}"/>
+          <TextBlock Text="{Binding Title}" FontWeight="SemiBold" Style="{StaticResource ResultText}"/>
+          <TextBlock Text="  ·  " Style="{StaticResource ResultMutedText}"/>
+          <TextBlock Text="{Binding Reclaim}" Style="{StaticResource ResultMutedText}"/>
+          <Border CornerRadius="4" Padding="7,1" Margin="12,0,0,0">
+            <Border.Style>
+              <Style TargetType="Border">
+                <Setter Property="Background" Value="{DynamicResource HashBadgeBg}"/>
+                <Style.Triggers><DataTrigger Binding="{Binding IsExact}" Value="True">
+                  <Setter Property="Background" Value="{DynamicResource ExactBadgeBg}"/>
+                </DataTrigger></Style.Triggers>
+              </Style>
+            </Border.Style>
+            <TextBlock Text="{Binding Badge}" FontSize="11.5">
+              <TextBlock.Style>
+                <Style TargetType="TextBlock">
+                  <Setter Property="Foreground" Value="{DynamicResource HashBadgeFg}"/>
+                  <Style.Triggers><DataTrigger Binding="{Binding IsExact}" Value="True">
+                    <Setter Property="Foreground" Value="{DynamicResource ExactBadgeFg}"/>
+                  </DataTrigger></Style.Triggers>
+                </Style>
+              </TextBlock.Style>
+            </TextBlock>
           </Border>
-          <TextBlock Text="{Binding SelectionText}" Foreground="#DC2626" FontWeight="SemiBold" Margin="12,0,0,0"/>
+          <TextBlock Text="{Binding SelectionText}" Style="{StaticResource ResultSelectionText}" FontWeight="SemiBold" Margin="12,0,0,0"/>
         </StackPanel>
       </Grid>
     </HierarchicalDataTemplate>
@@ -51,15 +109,15 @@
           <ColumnDefinition Width="*"/>
          </Grid.ColumnDefinitions>
          <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" VerticalAlignment="Top"
-                   Margin="0,2,8,0" ToolTip="Отметить для удаления"/>
+                   Margin="0,2,8,0" AutomationProperties.Name="{Binding Path, StringFormat=Отметить для удаления: {0}}" ToolTip="{Binding Path}"/>
          <StackPanel Grid.Column="1">
-          <TextBlock>
-            <Run Text="{Binding FileName, Mode=OneWay}" Foreground="{StaticResource TextMain}"/>
+          <TextBlock Style="{StaticResource ResultText}">
+            <Run Text="{Binding FileName, Mode=OneWay}"/>
             <Run Text="   "/>
-            <Run Text="{Binding Directory, Mode=OneWay}" Foreground="{StaticResource TextMuted}"/>
+            <Run Text="{Binding Directory, Mode=OneWay}" Style="{StaticResource ResultDirectoryRun}"/>
           </TextBlock>
-          <TextBlock Text="{Binding Info}" FontSize="11.5" Foreground="{StaticResource TextMuted}"/>
-          <TextBlock Text="{Binding AliasText}" FontSize="11.5" Foreground="{StaticResource Warn}" TextWrapping="Wrap"
+          <TextBlock Text="{Binding Info}" FontSize="11.5" Style="{StaticResource ResultMutedText}"/>
+          <TextBlock Text="{Binding AliasText}" FontSize="11.5" Style="{StaticResource ResultWarningText}" TextWrapping="Wrap"
                      Visibility="{Binding HasAliases, Converter={StaticResource BoolToVis}}"/>
          </StackPanel>
         </Grid>
@@ -67,7 +125,7 @@
     </DataTemplate>
   </Window.Resources>
 
-  <Grid Margin="20,16,20,16">
+  <Grid Margin="20,12,20,12">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
@@ -77,16 +135,17 @@
     </Grid.RowDefinitions>
 
     <!-- Header -->
-    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="2,0,0,14">
+    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="2,0,0,8">
       <Image Source="app.ico" Width="32" Height="32" Margin="0,0,12,0" VerticalAlignment="Center"/>
       <StackPanel VerticalAlignment="Center">
-        <TextBlock Text="Поиск дубликатов файлов" FontSize="20" FontWeight="SemiBold" Foreground="{StaticResource TextMain}"/>
-        <TextBlock Text="Сравнение по содержимому, а не по имени. Удаляется только то, что вы сами отметите." Foreground="{StaticResource TextMuted}"/>
+        <TextBlock Text="Поиск дубликатов файлов" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource TextMain}"/>
+        <TextBlock Text="Сравнение по содержимому, а не по имени. Удаляется только то, что вы сами отметите." Foreground="{DynamicResource TextMuted}"/>
       </StackPanel>
     </StackPanel>
 
     <!-- Settings card -->
-    <Border Grid.Row="1" Style="{StaticResource Card}">
+    <Border x:Name="SearchCard" Grid.Row="1" Style="{StaticResource Card}" MaxHeight="170" Padding="12,8">
+      <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
       <Grid>
         <Grid.RowDefinitions>
           <RowDefinition Height="Auto"/>
@@ -101,11 +160,11 @@
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="Auto"/>
           </Grid.ColumnDefinitions>
-          <TextBox x:Name="FolderBox" ToolTip="Можно указать несколько папок через «;» или перетащить папки в окно" KeyDown="OnFolderKeyDown"/>
+          <TextBox x:Name="FolderBox" AutomationProperties.Name="Папка для поиска" ToolTip="Можно указать несколько папок через «;» или перетащить папки в окно" KeyDown="OnFolderKeyDown"/>
           <Button Grid.Column="1" Content="Обзор…" Margin="8,0,0,0" Click="OnBrowse" MinWidth="96"/>
         </Grid>
         <TextBlock Grid.Row="2" Text="Несколько папок разделяйте «;». Папки можно перетащить в окно." FontSize="11.5"
-                   Foreground="{StaticResource TextMuted}" Margin="0,4,0,6"/>
+                   Foreground="{DynamicResource TextMuted}" Margin="0,4,0,6"/>
 
         <CheckBox Grid.Row="3" x:Name="RecursiveBox" IsChecked="True" Content="Рекурсивный поиск (включая все подпапки)"/>
 
@@ -114,7 +173,7 @@
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="Auto"/>
           </Grid.ColumnDefinitions>
-          <Expander Header="Дополнительные параметры" Foreground="{StaticResource TextMain}" VerticalAlignment="Top">
+          <Expander Header="Дополнительные параметры" Foreground="{DynamicResource TextMain}" VerticalAlignment="Top">
             <StackPanel Margin="22,4,0,0">
               <CheckBox x:Name="SkipSystemBox" IsChecked="True" Content="Пропускать системные файлы и папки"/>
               <CheckBox x:Name="SkipHiddenBox" Content="Пропускать скрытые файлы и папки"/>
@@ -123,10 +182,10 @@
               <CheckBox x:Name="AdsBox" Content="Сравнивать также альтернативные потоки NTFS (имена, размеры и содержимое)"/>
               <CheckBox x:Name="FollowLinksBox" Content="Переходить по ссылкам на папки (junction, symlink, точки монтирования)"/>
               <CheckBox x:Name="ShowZeroBox" Content="Показывать пустые файлы (0 байт)" Checked="OnShowZeroChanged" Unchecked="OnShowZeroChanged"/>
-              <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+              <StackPanel Margin="0,4,0,0">
                 <CheckBox x:Name="CacheBox" IsChecked="True" VerticalAlignment="Center"
                           Content="Запоминать хеши между запусками (повторный поиск быстрее)"/>
-                <Button Content="Очистить кеш" Click="OnClearCache" Margin="12,0,0,0" MinHeight="26" Padding="10,2"/>
+                <Button Content="Очистить кеш" Click="OnClearCache" HorizontalAlignment="Left" Margin="0,4,0,0" MinHeight="26" Padding="10,2"/>
               </StackPanel>
               <Button Content="Настройки производительности…" Click="OnSettings" HorizontalAlignment="Left" Margin="0,8,0,2" MinHeight="26" Padding="10,2"/>
             </StackPanel>
@@ -137,16 +196,17 @@
           </StackPanel>
         </Grid>
       </Grid>
+      </ScrollViewer>
     </Border>
 
     <!-- Progress -->
-    <StackPanel Grid.Row="2" Margin="2,12,2,10">
+    <StackPanel Grid.Row="2" Margin="2,8,2,6">
       <Grid>
-        <TextBlock x:Name="PhaseText" Text="Готов к поиску" Foreground="{StaticResource TextMain}" FontWeight="SemiBold"/>
-        <TextBlock x:Name="ElapsedText" HorizontalAlignment="Right" Foreground="{StaticResource TextMuted}"/>
+        <TextBlock x:Name="PhaseText" AutomationProperties.LiveSetting="Polite" Text="Готов к поиску" Foreground="{DynamicResource TextMain}" FontWeight="SemiBold"/>
+        <TextBlock x:Name="ElapsedText" HorizontalAlignment="Right" Foreground="{DynamicResource TextMuted}"/>
       </Grid>
-      <ProgressBar x:Name="Progress" Margin="0,6,0,4" Minimum="0" Maximum="1"/>
-      <TextBlock x:Name="CountersText" Foreground="{StaticResource TextMuted}" FontSize="12" TextTrimming="CharacterEllipsis"/>
+      <ProgressBar x:Name="Progress" AutomationProperties.Name="Ход поиска" Margin="0,6,0,4" Minimum="0" Maximum="1"/>
+      <TextBlock x:Name="CountersText" Foreground="{DynamicResource TextMuted}" FontSize="12" TextTrimming="CharacterEllipsis"/>
     </StackPanel>
 
     <!-- Results -->
@@ -158,12 +218,12 @@
               <RowDefinition Height="Auto"/>
               <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
-            <Border x:Name="SelectionBar" Background="#F8FAFC" BorderBrush="{StaticResource CardBorder}" BorderThickness="0,0,0,1"
+            <Border x:Name="SelectionBar" Background="{DynamicResource SurfaceAlt}" BorderBrush="{DynamicResource CardBorder}" BorderThickness="0,0,0,1"
                     Padding="12,8" Visibility="Collapsed">
               <WrapPanel>
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,8,6">
                   <TextBlock Text="Оставлять в группе:" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                  <ComboBox x:Name="KeepRuleBox" SelectedIndex="0" MinWidth="190" VerticalAlignment="Center">
+                  <ComboBox x:Name="KeepRuleBox" AutomationProperties.Name="Оставлять в группе" SelectedIndex="0" MinWidth="190" VerticalAlignment="Center">
                     <ComboBoxItem Content="самый старый файл"/>
                     <ComboBoxItem Content="самый новый файл"/>
                     <ComboBoxItem Content="файл с самым коротким путём"/>
@@ -172,14 +232,14 @@
                 </StackPanel>
                 <Button x:Name="SelectExtrasButton" Content="Отметить лишние копии" Click="OnSelectExtras" Margin="0,0,8,6" MinHeight="28" Padding="10,2"/>
                 <Button x:Name="ClearSelectionButton" Content="Снять отметки" Click="OnClearSelection" Margin="0,0,8,6" MinHeight="28" Padding="10,2"/>
-                  <TextBlock x:Name="SelectionText" VerticalAlignment="Center" Foreground="{StaticResource TextMuted}" Margin="0,0,10,6"/>
+                  <TextBlock x:Name="SelectionText" VerticalAlignment="Center" Foreground="{DynamicResource TextMuted}" Margin="0,0,10,6"/>
                   <CheckBox x:Name="PermanentBox" Content="безвозвратно" VerticalAlignment="Center" Margin="0,0,10,6"
                             ToolTip="Удалить мимо корзины. По умолчанию файлы перемещаются в корзину"/>
                   <Button x:Name="DeleteButton" Content="Удалить отмеченные…" Style="{StaticResource DangerButton}"
                           Click="OnDeleteSelected" IsEnabled="False" MinHeight="30" Padding="12,2" Margin="0,0,0,6"/>
               </WrapPanel>
             </Border>
-            <TreeView Grid.Row="1" x:Name="ResultTree" BorderThickness="0" Padding="8,4"
+            <TreeView Grid.Row="1" x:Name="ResultTree" Background="{DynamicResource CardBg}" Foreground="{DynamicResource TextMain}" AutomationProperties.Name="Найденные дубликаты" BorderThickness="0" Padding="8,4"
                       VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling"
                       VirtualizingPanel.ScrollUnit="Pixel"
                       MouseDoubleClick="OnTreeDoubleClick">
@@ -190,7 +250,7 @@
               </TreeView.ItemContainerStyle>
             </TreeView>
             <TextBlock Grid.Row="1" x:Name="EmptyHint" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"
-                       Foreground="{StaticResource TextMuted}" FontSize="14" TextWrapping="Wrap" Margin="24"
+                       Foreground="{DynamicResource TextMuted}" FontSize="14" TextWrapping="Wrap" Margin="24"
                        Text="Выберите папку и нажмите «Поиск»"/>
           </Grid>
         </TabItem>
@@ -200,8 +260,8 @@
         <TabItem x:Name="IssuesTab" Header="Пропущено и ошибки">
           <DataGrid x:Name="IssuesGrid" AutoGenerateColumns="False" IsReadOnly="True" BorderThickness="0"
                     HeadersVisibility="Column" GridLinesVisibility="None" RowHeaderWidth="0"
-                    EnableRowVirtualization="True" CanUserAddRows="False" Background="White"
-                    AlternatingRowBackground="#F8FAFC">
+                    EnableRowVirtualization="True" CanUserAddRows="False" Background="{DynamicResource CardBg}"
+                    AlternatingRowBackground="{DynamicResource SurfaceAlt}">
             <DataGrid.Columns>
               <DataGridTextColumn Header="Причина" Binding="{Binding StatusText}" Width="210"/>
               <DataGridTextColumn Header="Путь" Binding="{Binding Path}" Width="*"/>
@@ -222,7 +282,7 @@
         <ColumnDefinition Width="*"/>
         <ColumnDefinition Width="Auto"/>
       </Grid.ColumnDefinitions>
-      <TextBlock x:Name="SummaryText" VerticalAlignment="Center" TextWrapping="Wrap" Foreground="{StaticResource TextMain}" Margin="0,0,12,0"/>
+      <TextBlock x:Name="SummaryText" AutomationProperties.LiveSetting="Polite" VerticalAlignment="Center" TextWrapping="Wrap" Foreground="{DynamicResource TextMain}" Margin="0,0,12,0"/>
       <WrapPanel Grid.Column="1" VerticalAlignment="Center" MaxWidth="450">
         <Button x:Name="RecoveryButton" Content="Восстановить…" Click="OnRecovery" Margin="0,0,8,4"/>
         <Button x:Name="ExpandButton" Content="Развернуть все" Click="OnExpandAll" IsEnabled="False" Margin="0,0,8,0"/>
