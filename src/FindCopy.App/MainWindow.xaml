@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:FindCopy.App"
         Title="FindCopy — поиск дубликатов файлов"
+        Icon="{x:Static local:AppIcons.WindowIcon}"
         Width="1100" Height="760" MinWidth="760" MinHeight="560"
         WindowStartupLocation="CenterScreen"
         Background="{DynamicResource WindowBg}" Foreground="{DynamicResource TextMain}"
@@ -136,7 +137,8 @@
 
     <!-- Header -->
     <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="2,0,0,8">
-      <Image Source="app.ico" Width="32" Height="32" Margin="0,0,12,0" VerticalAlignment="Center"/>
+      <Image x:Name="BrandIcon" Source="{StaticResource AppIcon}" Width="32" Height="32" Margin="0,0,12,0"
+             VerticalAlignment="Center" SnapsToDevicePixels="True" Focusable="False"/>
       <StackPanel VerticalAlignment="Center">
         <TextBlock Text="Поиск дубликатов файлов" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource TextMain}"/>
         <TextBlock Text="Сравнение по содержимому, а не по имени. Удаляется только то, что вы сами отметите." Foreground="{DynamicResource TextMuted}"/>

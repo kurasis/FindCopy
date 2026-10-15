@@ -2,6 +2,10 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <Application.Resources>
+    <ResourceDictionary>
+    <ResourceDictionary.MergedDictionaries>
+      <ResourceDictionary Source="Assets/AppIcon.xaml"/>
+    </ResourceDictionary.MergedDictionaries>
     <SolidColorBrush x:Key="Accent" Color="#2563EB"/>
     <SolidColorBrush x:Key="AccentHover" Color="#1D4ED8"/>
     <SolidColorBrush x:Key="AccentPressed" Color="#1E40AF"/>
@@ -144,5 +148,6 @@
       <Setter Property="Background" Value="{DynamicResource ProgressBg}"/>
       <Setter Property="BorderThickness" Value="0"/>
     </Style>
+    </ResourceDictionary>
   </Application.Resources>
 </Application>

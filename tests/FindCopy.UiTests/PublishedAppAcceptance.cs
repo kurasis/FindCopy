@@ -8,6 +8,7 @@ internal static class PublishedAppAcceptance
 {
     public static void Run(string executable, string root)
     {
+        IconAcceptance.CheckPublishedExecutable(executable);
         Directory.CreateDirectory(root);
         File.WriteAllText(Path.Combine(root, "keeper"), "Published desktop acceptance bytes");
         File.WriteAllText(Path.Combine(root, "extra"), "Published desktop acceptance bytes");
