@@ -59,24 +59,28 @@ jobs:
               assert obj['type'] == 'commit' and obj['sha'] == sha, 'Existing tag points to a different build source'
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               output.write(f'sha={sha}\n')
+              output.write(f'version={version}\n')
           print(f'Publishing {tag} from {sha}; validation attempt {run["run_attempt"]}')
           PY
       - uses: actions/download-artifact@v4
         with:
-          name: FindCopy-win-x64
+          name: FindCopy-${{ steps.source.outputs.version }}-win-x64
           path: downloaded/x64
           run-id: ${{ inputs.validation_run }}
           github-token: ${{ github.token }}
       - uses: actions/download-artifact@v4
         with:
-          name: FindCopy-win-arm64
+          name: FindCopy-${{ steps.source.outputs.version }}-win-arm64
           path: downloaded/arm64
           run-id: ${{ inputs.validation_run }}
           github-token: ${{ github.token }}
       - name: Check executable architectures and prepare release assets
         run: |
           python3 - <<'PY'
-          import hashlib, pathlib, shutil, struct
+          import hashlib, os, pathlib, re, shutil, struct, zipfile
+          tag = os.environ['RELEASE_TAG']
+          assert re.fullmatch(r'v\d+\.\d+\.\d+', tag), 'Use a stable version tag'
+          version = tag[1:]
           output = pathlib.Path('release-assets')
           output.mkdir()
           checksums = []
@@ -87,9 +91,19 @@ jobs:
               pe = struct.unpack_from('<I', data, 0x3c)[0]
               assert data[pe:pe + 4] == b'PE\0\0'
               assert struct.unpack_from('<H', data, pe + 4)[0] == machine
-              name = f'FindCopy-win-{arch}.exe'
+              name = f'FindCopy-{version}-win-{arch}.exe'
               shutil.copyfile(source, output / name)
               checksums.append(hashlib.sha256(data).hexdigest() + '  ' + name)
+              archive_name = f'FindCopy-{version}-win-{arch}.zip'
+              with zipfile.ZipFile(output / archive_name, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+                  entry = zipfile.ZipInfo('FindCopy.exe', date_time=(1980, 1, 1, 0, 0, 0))
+                  entry.compress_type = zipfile.ZIP_DEFLATED
+                  entry.external_attr = 0o100644 << 16
+                  archive.writestr(entry, data)
+              with zipfile.ZipFile(output / archive_name) as archive:
+                  assert archive.namelist() == ['FindCopy.exe']
+                  assert archive.read('FindCopy.exe') == data, 'Archived executable differs from the validated build'
+              checksums.append(hashlib.sha256((output / archive_name).read_bytes()).hexdigest() + '  ' + archive_name)
           (output / 'SHA256SUMS.txt').write_text('\n'.join(checksums) + '\n', encoding='ascii')
           print('\n'.join(checksums))
           PY
@@ -105,8 +119,8 @@ jobs:
           assert release['targetCommitish'] == os.environ['BUILD_SHA'], 'Release source mismatch'
           PY
           else
-            printf 'Self-contained Windows x64 and ARM64 builds from `%s`.\n\n[Windows 11 build and test results](https://github.com/%s/actions/runs/%s).\n' "$BUILD_SHA" "$GH_REPO" "$VALIDATION_RUN" > release-notes.md
+            printf 'FindCopy %s: self-contained Windows x64 and ARM64 builds from `%s`.\n\nVersioned ZIP archives contain `FindCopy.exe`; standalone executables and SHA-256 checksums are also provided.\n\n[Windows 11 build and test results](https://github.com/%s/actions/runs/%s).\n' "${RELEASE_TAG#v}" "$BUILD_SHA" "$GH_REPO" "$VALIDATION_RUN" > release-notes.md
             gh release create "$RELEASE_TAG" --target "$BUILD_SHA" --title "FindCopy ${RELEASE_TAG#v}" --notes-file release-notes.md --draft
           fi
-          gh release upload "$RELEASE_TAG" release-assets/FindCopy-win-x64.exe release-assets/FindCopy-win-arm64.exe release-assets/SHA256SUMS.txt --clobber
+          gh release upload "$RELEASE_TAG" release-assets/* --clobber
           gh release edit "$RELEASE_TAG" --draft=false --latest

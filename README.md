@@ -24,9 +24,13 @@ interactive keyboard, screen-reader, and monitor-scaling checks.
 
 ## Build and test
 
-Download the self-contained x64 or ARM64 executable from
+Download the self-contained x64 or ARM64 build from
 [GitHub Releases](https://github.com/kurasis/FindCopy/releases). No separate
-.NET installation is required. Releases include SHA-256 checksums.
+.NET installation is required. Release archives and standalone executable names
+include the application version, for example `FindCopy-1.0.2-win-x64.zip` and
+`FindCopy-1.0.2-win-x64.exe`. Extract the ZIP and run `FindCopy.exe`, or download
+the standalone executable. Releases include SHA-256 checksums for both formats.
+The main window shows the compiled version in parentheses in its title.
 The manual **Publish FindCopy release** workflow publishes artifacts from a
 successful **Validate FindCopy** main run, checks the application version and
 executable architectures, checks existing tags against the validated commit,

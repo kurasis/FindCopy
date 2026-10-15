@@ -7,6 +7,10 @@
 - The user authorizes automatic commits, pushes, and merges for requested work.
   Complete relevant validation, report known failures honestly, and avoid
   destructive force pushes or overwriting unrelated remote work.
+- Always include the application version in distributable archive and standalone
+  executable filenames, and explicitly state the version when sharing builds
+  or release links with the user. Keep the window title, release tag, and asset
+  names consistent with the version in `FindCopy.App.csproj`.
 - Use the existing checkout. Cloud tasks are already isolated; do not create
   Git worktrees unless explicitly requested.
 - Keep application fixes separate from source import and audit changes unless
