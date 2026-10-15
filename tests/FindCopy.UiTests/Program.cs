@@ -78,6 +78,11 @@ internal static class Program
         Console.WriteLine($"DESKTOP_DPI: x={actualDpi.PixelsPerInchX}; y={actualDpi.PixelsPerInchY}");
         try
         {
+            await Test("UI23 vector and native icons remain sharp at supported render sizes", () =>
+            {
+                IconAcceptance.Run(window, _artifacts);
+                return Task.CompletedTask;
+            });
             await Test("UI security: every file association requires explicit confirmation", () =>
             {
                 foreach (string name in new[] { "document.txt", "program.exe", "console.msc", "custom.unlisted" })
@@ -215,7 +220,9 @@ internal static class Program
                 var settings = new AppSettings { SmallFileThresholdKiB = -1, SampleSizeKiB = int.MaxValue,
                     StreamBufferKiB = int.MaxValue, ReadersHdd = -1, ReadersSsd = 0, ReadersNvme = 1000, ReadersNetwork = 0 };
                 settings.Sanitized().ToTuning().Validate();
-                var dialog = new SettingsWindow(settings); dialog.Show(); dialog.Close();
+                var dialog = new SettingsWindow(settings); dialog.Show();
+                try { IconAcceptance.CheckWindow(dialog); }
+                finally { dialog.Close(); }
                 return Task.CompletedTask;
             });
             await Test("UI20 settings reject every numeric range violation without silently changing values", () =>
@@ -382,6 +389,7 @@ internal static class Program
                 recovery.Show();
                 try
                 {
+                    IconAcceptance.CheckWindow(recovery);
                     var grid = Control<DataGrid>(recovery, "HistoryGrid");
                     Require(grid.Items.Count == 1, "history binding"); grid.SelectedIndex = 0;
                     Click(recovery, "RestoreButton");

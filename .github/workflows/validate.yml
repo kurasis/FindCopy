@@ -45,6 +45,9 @@ jobs:
       - name: Release source and existing-tag regressions
         if: runner.os != 'Windows'
         run: python3 tests/test_release_source.py
+      - name: Native icon frames and shared vector consistency
+        if: runner.os != 'Windows'
+        run: python3 tests/test_icon_assets.py
       - name: Build self-contained Windows binaries
         if: runner.os == 'Windows'
         run: |
