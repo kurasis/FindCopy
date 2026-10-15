@@ -23,6 +23,7 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        Title += $" ({typeof(App).Assembly.GetName().Version!.ToString(3)})";
         // Preserve the minimum-size result viewport; larger windows can expose more options.
         SizeChanged += (_, _) => SearchCard.MaxHeight = Math.Clamp(ActualHeight - 390, 170, 340);
         _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };

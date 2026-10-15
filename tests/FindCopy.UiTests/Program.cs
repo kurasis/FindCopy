@@ -102,6 +102,8 @@ internal static class Program
             File.WriteAllText(Path.Combine(pair, "empty-a"), ""); File.WriteAllText(Path.Combine(pair, "empty-b"), "");
             await Test("UI1 real search binds duplicate and empty-file results", async () =>
             {
+                Require(window.Title.EndsWith($" ({typeof(App).Assembly.GetName().Version!.ToString(3)})", StringComparison.Ordinal),
+                    "window title does not expose the compiled application version in parentheses");
                 await Search(window, pair);
                 Require(Result(window).Groups.Count == 1 && Control<ListBox>(window, "ZeroList").Items.Count == 2, "result bindings");
                 Require(Control<Button>(window, "SearchButton").IsEnabled && !Control<Button>(window, "CancelButton").IsEnabled, "terminal controls");

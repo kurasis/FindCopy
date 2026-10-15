@@ -66,6 +66,9 @@ internal static class PublishedAppAcceptance
             AutomationElement Element(string id) => window!.FindFirst(TreeScope.Descendants,
                 new PropertyCondition(AutomationElement.AutomationIdProperty, id)) ?? throw new ControlNotReadyException(id);
             void Click(string id) => ((InvokePattern)Element(id).GetCurrentPattern(InvokePattern.Pattern)).Invoke();
+            string version = FileVersionInfo.GetVersionInfo(executable).ProductVersion!.Split('+')[0];
+            if (!window!.Current.Name.EndsWith($" ({version})", StringComparison.Ordinal))
+                throw new Exception("Published window title does not match executable product version " + version);
             ((ValuePattern)Element("FolderBox").GetCurrentPattern(ValuePattern.Pattern)).SetValue(root);
             Click("SearchButton");
             Until(() => Element("SummaryText").Current.Name.Contains("Найдено групп: 1"));
