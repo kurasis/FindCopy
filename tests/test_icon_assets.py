@@ -55,7 +55,7 @@ class IconAssetTests(unittest.TestCase):
     def test_every_application_window_uses_the_shared_icon(self):
         for name in ('MainWindow', 'SettingsWindow', 'RecoveryWindow'):
             window = ET.parse(APP / (name + '.xaml')).getroot()
-            self.assertEqual(window.attrib['Icon'], '{StaticResource AppIcon}')
+            self.assertEqual(window.attrib['Icon'], '{x:Static local:AppIcons.WindowIcon}')
         main = ET.parse(APP / 'MainWindow.xaml').getroot()
         self.assertTrue(all(image.attrib['Source'] == '{StaticResource AppIcon}' for image in main.findall('.//w:Image', WPF)))
 

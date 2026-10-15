@@ -52,7 +52,8 @@ internal static class IconAcceptance
 
     internal static void CheckWindow(Window window)
     {
-        Require(window.Icon is DrawingImage, "Window uses a generic or raster application icon: " + window.Title);
+        Require(window.Icon is BitmapFrame frame && frame.Decoder is IconBitmapDecoder && frame.Decoder.Frames.Count == Sizes.Length,
+            "Window must retain the multi-size native icon decoder: " + window.Title);
         var hwnd = new WindowInteropHelper(window).Handle;
         foreach (int kind in new[] { 0, 1 }) // WM_GETICON: ICON_SMALL and ICON_BIG.
         {
@@ -65,6 +66,10 @@ internal static class IconAcceptance
                     bitmap.Width >= (kind == 0 ? 16 : 32) && bitmap.Width == bitmap.Height && bitmap.BitsPixel == 32,
                     "Window native icon is undersized or lacks full-color alpha");
                 Console.WriteLine($"WINDOW_ICON: {window.GetType().Name}; kind={kind}; {bitmap.Width}x{bitmap.Height}; {bitmap.BitsPixel}bpp");
+                var rendered = Imaging.CreateBitmapSourceFromHIcon(icon, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+                var rgba = new FormatConvertedBitmap(rendered, PixelFormats.Bgra32, null, 0);
+                byte[] data = new byte[rgba.PixelWidth * rgba.PixelHeight * 4]; rgba.CopyPixels(data, rgba.PixelWidth * 4, 0);
+                CheckDocumentLines(data, rgba.PixelWidth);
             }
             finally
             {

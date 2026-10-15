@@ -2,8 +2,8 @@
 
 `AppIcon.svg` is the canonical flat vector artwork. Preserve its document-copy
 identity when making quality corrections. Runtime WPF does not load SVG: the
-generated `AppIcon.xaml` contains only vector geometry and supplies the header
-and all three windows' `Icon` properties. It has a transparent 256-unit viewbox
+generated `AppIcon.xaml` contains only vector geometry and supplies the header.
+It has a transparent 256-unit viewbox
 so its padding remains consistent at every render scale.
 
 The native `../app.ico` is embedded in the EXE for Explorer and shortcuts. It
@@ -11,6 +11,9 @@ contains 14 independent 32-bit RGBA frames: 16, 20, 24, 28, 32, 40, 48, 56, 64,
 72, 80, 96, 128, and 256 pixels. Each frame is rendered from the source geometry;
 small frames align details to physical pixels to preserve the three document
 lines. No frame is enlarged from a smaller bitmap.
+All three windows use `AppIcons.WindowIcon`, which retains the ICO decoder's
+complete frame collection so WPF can choose the best native size. Their actual
+small/large Windows HICONs are checked for size, alpha depth, and document lines.
 
 To regenerate the checked-in XAML and ICO, use Python 3 and ImageMagick 7:
 
